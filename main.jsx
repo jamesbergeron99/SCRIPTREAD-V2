@@ -25,7 +25,6 @@ const Scriptread = () => {
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
 
-    // THE ONLY UNLOCK PATH: Detecting the ?status=paid from PayPal
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get('status') === 'paid') {
@@ -65,26 +64,51 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let currentActionText = "";
+
+        // TECHNICAL FILTER: Words that should NEVER be characters or spoken by Narrator
+        const technicalTerms = /^(FADE\sIN|FADE\sOUT|CUT\sTO|DISSOLVE\sTO|ACT\s|END\sOF|EPISODE|TITLE|SCREENPLAY|WRITTEN\sBY)/i;
+
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 const txt = currentActionText.trim();
-                if (!/^(ACT|END\sOF\sACT|SCENE)/i.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
+                // Narrator skips technical transitions and act breaks
+                if (!technicalTerms.test(txt)) {
+                    finalBlocks.push({ type: 'narrator', text: txt });
+                }
                 currentActionText = ""; 
             } 
         };
 
         lines.forEach(line => {
             let text = line.text.trim();
-            if (!text || /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || /^\d+\.$/.test(text) || text === ".") return;
-            text = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").replace(/\([^)]*\)/g, "").trim();
+            
+            // 1. Kill Page Numbers and technical noise
+            if (!text || /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || text === ".") return;
+            
+            // 2. Format Slugs
+            text = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior");
+            
+            // 3. Detect Roles
             const isSlug = text.startsWith("Interior") || text.startsWith("Exterior");
-            const isCenteredChar = line.x > 180 && text === text.toUpperCase() && text.length < 30 && !isSlug;
+            const isTechnical = technicalTerms.test(text);
+            
+            // Character detection: Centered, UpperCase, Not a Slug, Not Technical
+            const isCharacter = line.x > 180 && text === text.toUpperCase() && text.length < 30 && !isSlug && !isTechnical;
 
-            if (isSlug) { flushAction(); finalBlocks.push({ type: 'narrator', text }); }
-            else if (isCenteredChar) { flushAction(); foundChars.add(text); finalBlocks.push({ type: 'dialogue', character: text, text: "" }); }
-            else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                finalBlocks[finalBlocks.length - 1].text += " " + text;
-            } else { currentActionText += " " + text; }
+            if (isSlug) { 
+                flushAction(); 
+                finalBlocks.push({ type: 'narrator', text }); 
+            } else if (isCharacter) { 
+                flushAction(); 
+                foundChars.add(text); 
+                finalBlocks.push({ type: 'dialogue', character: text, text: "" }); 
+            } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
+                // Remove parentheticals from the spoken text
+                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
+                if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
+            } else { 
+                currentActionText += " " + text; 
+            }
         });
         flushAction();
         setCharacters([...foundChars].sort());
@@ -121,23 +145,28 @@ const Scriptread = () => {
             const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
             const channelData = masterBuffer.getChannelData(0);
             let offset = 0; buffers.forEach(b => { channelData.set(b.getChannelData(0), offset); offset += b.length; });
-            const wavData = encodeWav(masterBuffer);
-            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([wavData], { type: 'audio/wav' }));
+            
+            const wavLen = masterBuffer.length * 2; const view = new DataView(new ArrayBuffer(44 + wavLen));
+            const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
+            writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
+            view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
+            view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
+            const dataArr = masterBuffer.getChannelData(0); let off = 44;
+            for (let i=0; i<dataArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+            
+            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
             link.download = "Scriptread_Master.wav"; link.click();
         } catch (e) {}
         setIsExporting(false);
     };
 
-    const encodeWav = (buffer) => {
-        const length = buffer.length * 2; const view = new DataView(new ArrayBuffer(44 + length));
-        const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
-        writeString(0, 'RIFF'); view.setUint32(4, 36 + length, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
-        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
-        view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, length, true);
-        const dataArr = buffer.getChannelData(0); let off = 44;
-        for (let i=0; i<dataArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
-        return view.buffer;
-    };
+    const VoiceListOptions = () => (
+        <>
+            <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+        </>
+    );
 
     return (
         <div className="flex flex-col h-screen w-screen bg-white text-black font-mono overflow-hidden fixed inset-0">
@@ -182,14 +211,14 @@ const Scriptread = () => {
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic tracking-tight">Narrator</p>
                             <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                {Object.values(INWORLD_VOICES).flat().map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                <VoiceListOptions />
                             </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <p className="text-[10px] font-black uppercase mb-2 tracking-tight">{char}</p>
                                 <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    {Object.values(INWORLD_VOICES).flat().map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                    <VoiceListOptions />
                                 </select>
                             </div>
                         ))}
