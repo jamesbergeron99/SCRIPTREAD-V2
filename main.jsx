@@ -81,27 +81,39 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let currentActionText = "";
-        const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF)/i;
+
+        // Structural elements Narrator should read but ARE NOT characters
+        const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
 
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
                 const isJustNumber = /^\d+$/.test(txt);
-                const containsAct = /ACT/i.test(txt);
-                if (txt && (!isJustNumber || containsAct) && !systemJunk.test(txt)) {
+                // If it's a structural label or general action, Narrator reads it.
+                if (txt && (!isJustNumber || narratorTechnical.test(txt)) && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
                 currentActionText = ""; 
             } 
         };
 
-        lines.forEach(line => {
+        lines.forEach((line, index) => {
             let text = line.text.trim();
-            if (!text || ( /^\d+$/.test(text) && !/ACT/i.test(text) ) || systemJunk.test(text)) return;
+            // 1. Skip numeric page numbers and generic junk immediately
+            if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
+            
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             const isTechnical = narratorTechnical.test(text);
+            
+            // Character detection: Centered, all caps, must have letters, not structural, not a slug
             const isCharacter = line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !isSlug && !isTechnical;
+
+            // Handle the very first line (Title Page)
+            if (index === 0 && text) {
+                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() });
+                return;
+            }
 
             if (isSlug) { 
                 flushAction(); 
@@ -163,8 +175,8 @@ const Scriptread = () => {
             writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
             view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
             view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
-            const dataArr = masterBuffer.getChannelData(0); let off = 44;
-            for (let i=0; i<dataArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+            const dataArrArr = masterBuffer.getChannelData(0); let off = 44;
+            for (let i=0; i<dataArrArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArrArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
             const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
             link.download = "Scriptread_Master.wav"; link.click();
         } catch (e) {}
@@ -184,7 +196,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The trial is over. Purchase full read and export for $2.50.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The 60-second trial is over. Purchase the full read and export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
@@ -251,7 +263,7 @@ const Scriptread = () => {
                 </main>
             </div>
             <footer className="h-32 border-t-8 border-black bg-white flex justify-center items-center gap-20 shrink-0 z-50">
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }}><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-125 transition-transform"><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
                 <button onClick={() => {
                     if (isPlaying) stopAudio();
                     else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); }
