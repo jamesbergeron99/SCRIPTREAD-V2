@@ -29,6 +29,7 @@ const Scriptread = () => {
     const audioContext = useRef(null);
     const activeSource = useRef(null);
     const isPlayingRef = useRef(false);
+    const preloadedAudio = useRef({}); // New: Buffer for snappy transitions
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
 
@@ -72,39 +73,69 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        // PHONETIC REPLACEMENTS
-        const cleanedText = text
-            .replace(/\bDEE\b/g, "Dee")
-            .replace(/\bsugar\b/gi, "shuger");
+        const cleanedText = text.replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger");
 
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
-            headers: { 
-                "Authorization": `Basic ${API_KEY}`, 
-                "Content-Type": "application/json" 
-            },
+            headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({ 
                 text: cleanedText, 
                 voiceId: voiceId || "Abby", 
-                modelId: "inworld-tts-1.5-max" // Reverting to 'max' for stability, it still supports emotional range
+                modelId: "inworld-tts-1.5-max" 
             })
         });
         
         if (!response.ok) throw new Error("Audio fetch failed");
-        
         const data = await response.json();
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
-    const previewVoice = async (vId, charName) => {
-        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
+    // Preloader to kill the gaps between lines
+    const preloadNext = async (index) => {
+        if (index >= segments.length || preloadedAudio.current[index]) return;
+        const seg = segments[index];
+        const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
         try {
-            const buffer = await fetchAudio(`Hello, I'm ${charName}.`, vId);
+            const buffer = await fetchAudio(seg.text, voice);
+            preloadedAudio.current[index] = buffer;
+        } catch (e) {}
+    };
+
+    const playSegment = async (index) => {
+        if (!isPlayingRef.current || index >= segments.length || (!isUnlocked && totalSeconds >= TRIAL_LIMIT)) return;
+        setCurrentIdx(index);
+        
+        const seg = segments[index];
+        const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
+
+        try {
+            // Use preloaded audio if available, otherwise fetch live
+            let buffer = preloadedAudio.current[index] || await fetchAudio(seg.text, voice);
+            delete preloadedAudio.current[index]; // Clean up memory
+
+            if (!isPlayingRef.current) return;
+
             const source = audioContext.current.createBufferSource();
-            source.buffer = buffer; 
-            source.connect(audioContext.current.destination); 
+            source.buffer = buffer;
+            // Snappier pacing: Increase playback rate slightly
+            source.playbackRate.value = 1.05; 
+            source.connect(audioContext.current.destination);
+            
+            source.onended = () => { 
+                setTotalSeconds(prev => prev + (buffer.duration / 1.05)); 
+                if (isPlayingRef.current) playSegment(index + 1); 
+            };
+
+            activeSource.current = source;
             source.start();
-        } catch (e) { console.error(e); }
+
+            // While this one is playing, preload the NEXT TWO lines
+            preloadNext(index + 1);
+            preloadNext(index + 2);
+
+        } catch (e) {
+            if(isPlayingRef.current) playSegment(index + 1); 
+        }
     };
 
     const parseScript = (lines) => {
@@ -130,10 +161,8 @@ const Scriptread = () => {
         lines.forEach((line) => {
             let text = line.text.trim();
             if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
-            
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             if (isSlug) hasHitFirstSlug = true;
-
             const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
             
             if (!hasHitFirstSlug) {
@@ -150,9 +179,7 @@ const Scriptread = () => {
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName && !/^\d+$/.test(cleanName)) {
                     foundChars.add(cleanName); 
-                    if (!newVoiceMap[cleanName]) {
-                        newVoiceMap[cleanName] = autoAssignVoice(cleanName);
-                    }
+                    if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = autoAssignVoice(cleanName);
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); 
                 }
             } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
@@ -166,27 +193,7 @@ const Scriptread = () => {
         setVoiceMap(newVoiceMap);
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
-    };
-
-    const playSegment = async (index) => {
-        if (!isPlayingRef.current || index >= segments.length || (!isUnlocked && totalSeconds >= TRIAL_LIMIT)) return;
-        setCurrentIdx(index);
-        const seg = segments[index];
-        const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-        try {
-            const buffer = await fetchAudio(seg.text, voice);
-            if (!isPlayingRef.current) return;
-            const source = audioContext.current.createBufferSource();
-            source.buffer = buffer; source.connect(audioContext.current.destination);
-            source.onended = () => { 
-                setTotalSeconds(prev => prev + buffer.duration); 
-                if (isPlayingRef.current) playSegment(index + 1); 
-            };
-            activeSource.current = source; source.start();
-        } catch (e) { 
-            console.error(e);
-            if(isPlayingRef.current) playSegment(index + 1); 
-        }
+        preloadedAudio.current = {}; // Reset preload buffer on new script
     };
 
     const masterAndExport = async () => {
@@ -214,7 +221,7 @@ const Scriptread = () => {
             for (let i=0; i<dataArrArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArrArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
             const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
             link.download = "Scriptread_Master.wav"; link.click();
-        } catch (e) { console.error(e); }
+        } catch (e) {}
         setIsExporting(false);
     };
 
@@ -267,7 +274,7 @@ const Scriptread = () => {
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <div className="flex justify-between items-center mb-2">
                                 <p className="text-[10px] font-black uppercase text-gray-400">Narrator</p>
-                                <button onClick={() => previewVoice(voiceMap.Narrator, "The Narrator")} className="text-[9px] font-black underline uppercase">Hear</button>
+                                <button onClick={() => { if (audioContext.current.state === 'suspended') audioContext.current.resume(); fetchAudio(`Auditioning.`, voiceMap.Narrator).then(b => { const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); }); }} className="text-[9px] font-black underline uppercase">Hear</button>
                             </div>
                             <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 <VoiceListOptions />
@@ -277,7 +284,7 @@ const Scriptread = () => {
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <div className="flex justify-between items-center mb-2">
                                     <p className="text-[10px] font-black uppercase tracking-tight">{char}</p>
-                                    <button onClick={() => previewVoice(voiceMap[char] || "Abby", char)} className="text-[9px] font-black underline uppercase">Hear</button>
+                                    <button onClick={() => { if (audioContext.current.state === 'suspended') audioContext.current.resume(); fetchAudio(`Auditioning.`, voiceMap[char] || "Abby").then(b => { const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); }); }} className="text-[9px] font-black underline uppercase">Hear</button>
                                 </div>
                                 <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <VoiceListOptions />
