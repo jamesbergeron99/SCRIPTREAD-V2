@@ -81,6 +81,7 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let currentActionText = "";
+        let hasHitFirstSlug = false;
 
         const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
@@ -89,29 +90,37 @@ const Scriptread = () => {
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
                 const isJustNumber = /^\d+$/.test(txt);
-                if (txt && (!isJustNumber || narratorTechnical.test(txt)) && !systemJunk.test(txt)) {
+                // Narrator reads if it's not a page number and not generic junk
+                if (txt && !isJustNumber && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
                 currentActionText = ""; 
             } 
         };
 
-        lines.forEach((line, index) => {
+        lines.forEach((line) => {
             let text = line.text.trim();
+            // Kill page numbers and junk immediately
             if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
             
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
+            if (isSlug) hasHitFirstSlug = true;
+
             const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
             
-            const isCharacter = line.x > 180 && 
+            // Character detection: ONLY happens after the title page (first slug)
+            const isCharacter = hasHitFirstSlug && 
+                                line.x > 180 && 
                                 text === text.toUpperCase() && 
                                 /[A-Z]/.test(text) && 
                                 !text.includes('"') && 
                                 !isSlug && 
                                 !isTechnical;
 
-            if (index < 10 && !isSlug && !isCharacter) {
-                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() });
+            // COVER PAGE LOGIC: Everything before the first slug goes to the Narrator
+            if (!hasHitFirstSlug) {
+                const cleanIntro = text.replace(/\([^)]*\)/g, "").trim();
+                if (cleanIntro) finalBlocks.push({ type: 'narrator', text: cleanIntro });
                 return;
             }
 
