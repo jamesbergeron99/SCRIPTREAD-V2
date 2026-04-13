@@ -111,7 +111,10 @@ const Scriptread = () => {
     };
 
     const masterAndExport = async () => {
-        if (!isUnlocked) return;
+        if (!isUnlocked) {
+            setShowPaywall(true);
+            return;
+        }
         setIsExporting(true); setExportProgress(0);
         const buffers = [];
         try {
@@ -131,11 +134,10 @@ const Scriptread = () => {
             writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
             view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
             view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
-            const data = masterBuffer.getChannelData(0); let off = 44;
-            for (let i=0; i<data.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, data[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+            const dataArr = masterBuffer.getChannelData(0); let off = 44;
+            for (let i=0; i<dataArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
             
-            const link = document.createElement('a'); 
-            link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
+            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
             link.download = "Scriptread_Master.wav"; link.click();
         } catch (e) {}
         setIsExporting(false);
@@ -162,17 +164,15 @@ const Scriptread = () => {
                 </div>
             )}
 
-            <header className="h-24 border-b-8 border-black px-8 flex justify-between items-center bg-white shrink-0 z-50 shadow-sm">
+            <header className="h-24 border-b-8 border-black px-8 flex justify-between items-center bg-white shrink-0 z-50">
                 <div className="flex items-center gap-8">
                     <h1 className="text-3xl font-black uppercase italic tracking-tighter">Scriptread</h1>
                     {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic">Trial: {Math.round(totalSeconds)}s / 60s</div>}
                 </div>
                 <div className="flex gap-4">
-                    {isUnlocked && (
-                        <button onClick={masterAndExport} className="px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            {isExporting ? `Exporting ${exportProgress}%` : "Master & Export Wav"}
-                        </button>
-                    )}
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic ${isUnlocked ? 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-200 opacity-50'}`}>
+                        {isExporting ? `Exporting ${exportProgress}%` : "Master & Export Wav"}
+                    </button>
                     <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs cursor-pointer border-4 border-black hover:invert transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
@@ -196,12 +196,12 @@ const Scriptread = () => {
                     <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic">Narrator</p>
-                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none cursor-pointer" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
+                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <p className="text-[10px] font-black uppercase mb-2">{char}</p>
-                                <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none cursor-pointer" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
+                                <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
                     </div>
