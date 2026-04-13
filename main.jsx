@@ -4,7 +4,6 @@ import ReactDOM from 'react-dom/client';
 const INWORLD_VOICES = {
     narrators: [
         { id: "Serena", name: "Serena" },
-        { id: "Selene", name: "Selene" },
         { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
     ],
     female: [
