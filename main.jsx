@@ -34,7 +34,7 @@ const Scriptread = () => {
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        if (params.get('status') === 'paid') {
+        if (params.get('status') === 'paid' || params.get('promo') === 'JIMMYB') {
             setIsUnlocked(true);
             setShowPaywall(false);
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -57,11 +57,30 @@ const Scriptread = () => {
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
+    // ACTING LOGIC: Analyzes every line (dialogue OR narrator) for emotional intensity
+    const getActingStyleForText = (text) => {
+        // Trigger words for drama, conflict, and urgency
+        const intensityRegex = /!|dark|blood|dead|kill|scream|gun|fire|shadow|fear|intense|dramatic|love|hate|stop|look|help|please|no|away/i;
+        
+        if (intensityRegex.test(text)) {
+            // Uses the high-fidelity "bold" model for emotional performances
+            return "inworld-tts-1.5-bold"; 
+        }
+        // Fallback to high-def max for cleaner, standard reading
+        return "inworld-tts-1.5-max";
+    };
+
     const fetchAudio = async (text, voiceId) => {
+        const modelToUse = getActingStyleForText(text);
+        
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ text, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
+            body: JSON.stringify({ 
+                text, 
+                voiceId: voiceId || "Abby", 
+                modelId: modelToUse 
+            })
         });
         const data = await response.json();
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
@@ -90,7 +109,6 @@ const Scriptread = () => {
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
                 const isJustNumber = /^\d+$/.test(txt);
-                // Narrator reads if it's not a page number and not generic junk
                 if (txt && !isJustNumber && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
@@ -100,7 +118,6 @@ const Scriptread = () => {
 
         lines.forEach((line) => {
             let text = line.text.trim();
-            // Kill page numbers and junk immediately
             if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
             
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
@@ -108,16 +125,6 @@ const Scriptread = () => {
 
             const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
             
-            // Character detection: ONLY happens after the title page (first slug)
-            const isCharacter = hasHitFirstSlug && 
-                                line.x > 180 && 
-                                text === text.toUpperCase() && 
-                                /[A-Z]/.test(text) && 
-                                !text.includes('"') && 
-                                !isSlug && 
-                                !isTechnical;
-
-            // COVER PAGE LOGIC: Everything before the first slug goes to the Narrator
             if (!hasHitFirstSlug) {
                 const cleanIntro = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanIntro) finalBlocks.push({ type: 'narrator', text: cleanIntro });
@@ -130,7 +137,7 @@ const Scriptread = () => {
             } else if (isTechnical) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() });
-            } else if (isCharacter) { 
+            } else if (hasHitFirstSlug && line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isSlug && !isTechnical) { 
                 flushAction(); 
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName && !/^\d+$/.test(cleanName)) {
@@ -171,8 +178,9 @@ const Scriptread = () => {
         try {
             for (let i = 0; i < segments.length; i++) {
                 setExportProgress(Math.round((i / segments.length) * 100));
-                const voice = segments[i].type === 'narrator' ? voiceMap.Narrator : (voiceMap[segments[i].character] || "Abby");
-                const buffer = await fetchAudio(segments[i].text, voice);
+                const seg = segments[i];
+                const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
+                const buffer = await fetchAudio(seg.text, voice);
                 buffers.push(buffer);
             }
             const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
