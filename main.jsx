@@ -33,7 +33,10 @@ const Scriptread = () => {
     }, []);
 
     useEffect(() => {
-        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); }
+        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { 
+            stopAudio(); 
+            setShowPaywall(true); 
+        }
     }, [totalSeconds, isUnlocked]);
 
     const stopAudio = () => {
@@ -62,14 +65,25 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let currentActionText = "";
-        const flushAction = () => { if (currentActionText.trim()) { finalBlocks.push({ type: 'narrator', text: currentActionText.trim() }); currentActionText = ""; } };
+        
+        const flushAction = () => { 
+            if (currentActionText.trim()) { 
+                const cleanText = currentActionText.trim();
+                const isActBreak = /^(ACT\s|END\sOF\sACT|SCENE\s)/i.test(cleanText);
+                if (!isActBreak) {
+                    finalBlocks.push({ type: 'narrator', text: cleanText });
+                }
+                currentActionText = ""; 
+            } 
+        };
 
         lines.forEach(line => {
             let text = line.text.trim();
             const isPageNum = /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || /^\d+\.$/.test(text);
             const isActLabel = /^(ACT\s|END\sOF\sACT|SCENE\s)/i.test(text);
+            
             if (!text || isPageNum || isActLabel) return;
-
+            
             text = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior");
             text = text.replace(/\([^)]*\)/g, "").trim();
             if (!text) return;
@@ -77,11 +91,18 @@ const Scriptread = () => {
             const isSlug = text.startsWith("Interior") || text.startsWith("Exterior");
             const isCenteredChar = line.x > 180 && text === text.toUpperCase() && text.length < 30 && !isSlug;
 
-            if (isSlug) { flushAction(); finalBlocks.push({ type: 'narrator', text }); }
-            else if (isCenteredChar) { flushAction(); foundChars.add(text); finalBlocks.push({ type: 'dialogue', character: text, text: "" }); }
-            else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
+            if (isSlug) { 
+                flushAction(); 
+                finalBlocks.push({ type: 'narrator', text }); 
+            } else if (isCenteredChar) { 
+                flushAction(); 
+                foundChars.add(text); 
+                finalBlocks.push({ type: 'dialogue', character: text, text: "" }); 
+            } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 finalBlocks[finalBlocks.length - 1].text += " " + text;
-            } else { currentActionText += " " + text; }
+            } else { 
+                currentActionText += " " + text; 
+            }
         });
         flushAction();
         setCharacters([...foundChars].sort());
@@ -98,7 +119,10 @@ const Scriptread = () => {
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
-            source.onended = () => { setTotalSeconds(prev => prev + buffer.duration); if (isPlayingRef.current) playSegment(index + 1); };
+            source.onended = () => { 
+                setTotalSeconds(prev => prev + buffer.duration); 
+                if (isPlayingRef.current) playSegment(index + 1); 
+            };
             activeSource.current = source; source.start();
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
@@ -149,7 +173,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="absolute inset-0 z-[200] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Support Production</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight">The 30-second trial has ended. To continue this read with professional AI narration, please donate $2.50 per script read.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight">The 30-second trial has ended. To continue reading with professional AI narration, please donate $2.50 per script read.</p>
                     <a href="https://paypal.me/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Donate $2.50 via PayPal</a>
                     <div className="mt-12 border-t-8 border-black pt-8 w-80">
                         <p className="text-[10px] font-black uppercase mb-3">Already donated? Enter code:</p>
@@ -189,6 +213,7 @@ const Scriptread = () => {
             </header>
 
             <div className="flex-1 flex overflow-hidden">
+                {/* CAST LIST COLUMN - LEFT SIDE */}
                 <aside className="w-72 border-r-[6px] border-black bg-gray-50 overflow-y-auto shrink-0 custom-scrollbar z-10">
                     <div className="p-3 bg-black text-white font-black text-[12px] uppercase text-center sticky top-0 italic z-20 tracking-widest">Cast List</div>
                     <div className="p-6 space-y-8">
@@ -205,20 +230,24 @@ const Scriptread = () => {
                     </div>
                 </aside>
 
+                {/* SCRIPT COLUMN - MIDDLE */}
                 <main className="flex-1 overflow-y-auto bg-white p-12 pb-48 custom-scrollbar">
-                    {segments.length === 0 ? (
-                        <div className="h-full flex items-center justify-center opacity-10 italic font-black text-4xl uppercase tracking-tighter">No Script Loaded</div>
-                    ) : (
-                        segments.map((seg, i) => (
-                            <div key={i} className={`p-8 border-[4px] mb-8 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
-                                {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-2 italic tracking-widest">{seg.character}</p>}
-                                <p className="text-lg font-bold uppercase leading-tight tracking-tight">{seg.text}</p>
-                            </div>
-                        ))
-                    )}
+                    <div className="max-w-2xl mx-auto">
+                        {segments.length === 0 ? (
+                            <div className="h-[60vh] flex items-center justify-center opacity-10 italic font-black text-4xl uppercase tracking-tighter">No Script Loaded</div>
+                        ) : (
+                            segments.map((seg, i) => (
+                                <div key={i} className={`p-8 border-[4px] mb-8 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
+                                    {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-2 italic tracking-widest">{seg.character}</p>}
+                                    <p className="text-lg font-bold uppercase leading-tight tracking-tight">{seg.text}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </main>
             </div>
 
+            {/* CONTROL BAR - BOTTOM STATIONARY */}
             <footer className="shrink-0 border-t-[6px] border-black p-8 bg-white flex justify-center items-center gap-16 z-50">
                 <button className="hover:scale-125 transition-transform" onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }}><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
                 <button onClick={() => {
