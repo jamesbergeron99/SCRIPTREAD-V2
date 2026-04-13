@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
 
 const INWORLD_VOICES = {
     narrators: [{ id: "Selene", name: "Selene" }, { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }],
@@ -133,12 +132,12 @@ const Scriptread = () => {
     };
 
     return (
-        <div className="flex flex-col h-screen w-screen bg-white text-black overflow-hidden fixed inset-0">
+        <div className="flex flex-col h-screen w-screen bg-white text-black font-mono overflow-hidden fixed inset-0">
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6">Support Production</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600">The trial has ended. To continue reading with professional AI narration, please donate $2.50 per script read.</p>
-                    <a href="https://paypal.me/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Donate $2.50 via PayPal</a>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600">Trial ended. Please donate $2.50 to continue.</p>
+                    <a href="https://paypal.me/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">Donate $2.50 via PayPal</a>
                     <div className="mt-12 border-t-8 border-black pt-8 w-80">
                         <input type="text" value={inputCode} onChange={(e) => setInputCode(e.target.value)} placeholder="ENTER CODE" className="w-full border-4 border-black p-3 text-center font-black uppercase mb-4 outline-none" />
                         <button onClick={() => { if(inputCode.toUpperCase()==='FRANK2026'){setIsUnlocked(true);setShowPaywall(false);} }} className="w-full bg-black text-white py-4 font-black uppercase">Unlock Studio</button>
@@ -149,7 +148,7 @@ const Scriptread = () => {
             <header className="h-24 border-b-8 border-black px-8 flex justify-between items-center bg-white shrink-0 z-50">
                 <div className="flex items-center gap-8">
                     <h1 className="text-3xl font-black uppercase italic tracking-tighter">Scriptread</h1>
-                    {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic">Trial: {Math.round(totalSeconds)}s / 30s</div>}
+                    {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic tracking-tight">Trial: {Math.round(totalSeconds)}s / 30s</div>}
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className="px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic">
@@ -175,13 +174,7 @@ const Scriptread = () => {
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 border-r-8 border-black bg-gray-50 flex flex-col overflow-hidden shrink-0">
                     <div className="p-4 bg-black text-white font-black uppercase text-center italic tracking-widest text-sm">Cast List</div>
-                    <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                        <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <p className="text-[10px] font-black uppercase text-gray-400 mb-2">Narrator</p>
-                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                {INWORLD_VOICES.female.concat(INWORLD_VOICES.male).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                            </select>
-                        </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-8">
                         {characters.map(char => (
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <p className="text-[10px] font-black uppercase mb-2">{char}</p>
@@ -193,7 +186,7 @@ const Scriptread = () => {
                     </div>
                 </aside>
 
-                <main className="flex-1 overflow-y-auto bg-white p-16 custom-scrollbar">
+                <main className="flex-1 overflow-y-auto bg-white p-16">
                     <div className="max-w-3xl mx-auto">
                         {segments.map((seg, i) => (
                             <div key={i} className={`p-10 border-4 mb-10 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
@@ -219,5 +212,4 @@ const Scriptread = () => {
     );
 };
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<Scriptread />);
+ReactDOM.createRoot(document.getElementById('root')).render(<Scriptread />);
