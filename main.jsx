@@ -2,9 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 
 const INWORLD_VOICES = {
-    narrators: [{ id: "Selene", name: "Selene" }, { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }],
-    female: [{ id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Victoria", name: "Victoria" }],
-    male: [{ id: "Alex", name: "Alex" }, { id: "James", name: "James" }, { id: "Victor", name: "Victor" }]
+    narrators: [
+        { id: "Selene", name: "Selene" },
+        { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
+    ],
+    female: [
+        { id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Anjali", name: "Anjali" }, { id: "Aoede", name: "Aoede" }, { id: "Ashley", name: "Ashley" }, { id: "Bianca", name: "Bianca" }, { id: "Celeste", name: "Celeste" }, { id: "Chloe", name: "Chloe" }, { id: "Claire", name: "Claire" }, { id: "Darlene", name: "Darlene" }, { id: "Deborah", name: "Deborah" }, { id: "Eleanor", name: "Eleanor" }, { id: "Evelyn", name: "Evelyn" }, { id: "Hana", name: "Hana" }, { id: "Jessica", name: "Jessica" }, { id: "Kelsey", name: "Kelsey" }, { id: "Lauren", name: "Lauren" }, { id: "Leda", name: "Leda" }, { id: "Loretta", name: "Loretta" }, { id: "Luna", name: "Luna" }, { id: "Marlene", name: "Marlene" }, { id: "Mia", name: "Mia" }, { id: "Miranda", name: "Miranda" }, { id: "Nadia", name: "Nadia" }, { id: "Naomi", name: "Naomi" }, { id: "Olivia", name: "Olivia" }, { id: "Pippa", name: "Pippa" }, { id: "Pixie", name: "Pixie" }, { id: "Riley", name: "Riley" }, { id: "Saanvi", name: "Saanvi" }, { id: "Sarah", name: "Sarah" }, { id: "Serena", name: "Serena" }, { id: "Sophie", name: "Sophie" }, { id: "Tessa", name: "Tessa" }, { id: "Veronica", name: "Veronica" }, { id: "Victoria", name: "Victoria" }
+    ],
+    male: [
+        { id: "Alex", name: "Alex" }, { id: "Arjun", name: "Arjun" }, { id: "Avery", name: "Avery" }, { id: "Blake", name: "Blake" }, { id: "Brandon", name: "Brandon" }, { id: "Brian", name: "Brian" }, { id: "Callum", name: "Callum" }, { id: "Carter", name: "Carter" }, { id: "Cedric", name: "Cedric" }, { id: "Clive", name: "Clive" }, { id: "Conrad", name: "Conrad" }, { id: "Damon", name: "Damon" }, { id: "Dennis", name: "Dennis" }, { id: "Derek", name: "Derek" }, { id: "Dominus", name: "Dominus" }, { id: "Duncan", name: "Duncan" }, { id: "Edward", name: "Edward" }, { id: "Elliott", name: "Elliott" }, { id: "Ethan", name: "Ethan" }, { id: "Evan", name: "Evan" }, { id: "Felix", name: "Felix" }, { id: "Gareth", name: "Gareth" }, { id: "Graham", name: "Graham" }, { id: "Hamish", name: "Hamish" }, { id: "Hank", name: "Hank" }, { id: "James", name: "James" }, { id: "Jason", name: "Jason" }, { id: "Jonah", name: "Jonah" }, { id: "Levi", name: "Levi" }, { id: "Liam", name: "Liam" }, { id: "Lucian", name: "Lucian" }, { id: "Malcolm", name: "Malcolm" }, { id: "Marcus", name: "Marcus" }, { id: "Mark", name: "Mark" }, { id: "Nate", name: "Nate" }, { id: "Oliver", name: "Oliver" }, { id: "Reed", name: "Reed" }, { id: "Rupert", name: "Rupert" }, { id: "Sebastian", name: "Sebastian" }, { id: "Simon", name: "Simon" }, { id: "Timothy", name: "Timothy" }, { id: "Trevor", name: "Trevor" }, { id: "Tristan", name: "Tristan" }, { id: "Tyler", name: "Tyler" }, { id: "Victor", name: "Victor" }, { id: "Vinny", name: "Vinny" }
+    ]
 };
 
 const Scriptread = () => {
@@ -45,10 +52,19 @@ const Scriptread = () => {
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ text, voiceId, modelId: "inworld-tts-1.5-max" })
+            body: JSON.stringify({ text, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
         });
         const data = await response.json();
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
+    };
+
+    const previewVoice = async (vId) => {
+        if (audioContext.current.state === 'suspended') audioContext.current.resume();
+        try {
+            const buffer = await fetchAudio("Voice check.", vId);
+            const source = audioContext.current.createBufferSource();
+            source.buffer = buffer; source.connect(audioContext.current.destination); source.start();
+        } catch (e) {}
     };
 
     const parseScript = (lines) => {
@@ -58,14 +74,15 @@ const Scriptread = () => {
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 const txt = currentActionText.trim();
-                if (!/^(ACT|END\sOF\sACT|SCENE|PAGE)/i.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
+                if (!/^(ACT|END\sOF\sACT|SCENE)/i.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
                 currentActionText = ""; 
             } 
         };
 
         lines.forEach(line => {
             let text = line.text.trim();
-            if (!text || /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text)) return;
+            if (!text || /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || /^\d+\.$/.test(text)) return;
+            
             text = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior");
             text = text.replace(/\([^)]*\)/g, "").trim();
             if (!text) return;
@@ -88,8 +105,10 @@ const Scriptread = () => {
         if (!isPlayingRef.current || index >= segments.length || (!isUnlocked && totalSeconds >= 30)) return;
         setCurrentIdx(index);
         const seg = segments[index];
+        const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
         try {
-            const buffer = await fetchAudio(seg.text, voiceMap[seg.character] || voiceMap.Narrator);
+            const buffer = await fetchAudio(seg.text, voice);
+            if (!isPlayingRef.current) return;
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
@@ -131,16 +150,24 @@ const Scriptread = () => {
         return view.buffer;
     };
 
+    const VoiceListOptions = () => (
+        <>
+            <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+        </>
+    );
+
     return (
         <div className="flex flex-col h-screen w-screen bg-white text-black font-mono overflow-hidden fixed inset-0">
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6">Support Production</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600">Trial ended. Please donate $2.50 to continue.</p>
-                    <a href="https://paypal.me/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">Donate $2.50 via PayPal</a>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600">Trial complete. To continue reading with professional AI narration, please donate $2.50 per script read.</p>
+                    <a href="https://paypal.me/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Donate $2.50 via PayPal</a>
                     <div className="mt-12 border-t-8 border-black pt-8 w-80">
                         <input type="text" value={inputCode} onChange={(e) => setInputCode(e.target.value)} placeholder="ENTER CODE" className="w-full border-4 border-black p-3 text-center font-black uppercase mb-4 outline-none" />
-                        <button onClick={() => { if(inputCode.toUpperCase()==='FRANK2026'){setIsUnlocked(true);setShowPaywall(false);} }} className="w-full bg-black text-white py-4 font-black uppercase">Unlock Studio</button>
+                        <button onClick={() => { if(inputCode.toUpperCase()==='FRANK2026'){setIsUnlocked(true);setShowPaywall(false);} }} className="w-full bg-black text-white py-4 font-black uppercase hover:invert transition-all">Unlock Studio</button>
                     </div>
                 </div>
             )}
@@ -148,7 +175,7 @@ const Scriptread = () => {
             <header className="h-24 border-b-8 border-black px-8 flex justify-between items-center bg-white shrink-0 z-50">
                 <div className="flex items-center gap-8">
                     <h1 className="text-3xl font-black uppercase italic tracking-tighter">Scriptread</h1>
-                    {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic tracking-tight">Trial: {Math.round(totalSeconds)}s / 30s</div>}
+                    {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic">Trial: {Math.round(totalSeconds)}s / 30s</div>}
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className="px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic">
@@ -174,19 +201,31 @@ const Scriptread = () => {
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 border-r-8 border-black bg-gray-50 flex flex-col overflow-hidden shrink-0">
                     <div className="p-4 bg-black text-white font-black uppercase text-center italic tracking-widest text-sm">Cast List</div>
-                    <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                    <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                        <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="flex justify-between items-center mb-2">
+                                <p className="text-[10px] font-black uppercase text-gray-400">Narrator</p>
+                                <button onClick={() => previewVoice(voiceMap.Narrator)} className="text-[9px] font-black underline uppercase">Hear</button>
+                            </div>
+                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                                <VoiceListOptions />
+                            </select>
+                        </div>
                         {characters.map(char => (
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                                <p className="text-[10px] font-black uppercase mb-2">{char}</p>
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="text-[10px] font-black uppercase">{char}</p>
+                                    <button onClick={() => previewVoice(voiceMap[char] || "Abby")} className="text-[9px] font-black underline uppercase">Hear</button>
+                                </div>
                                 <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    {INWORLD_VOICES.female.concat(INWORLD_VOICES.male).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                    <VoiceListOptions />
                                 </select>
                             </div>
                         ))}
                     </div>
                 </aside>
 
-                <main className="flex-1 overflow-y-auto bg-white p-16">
+                <main className="flex-1 overflow-y-auto bg-white p-16 custom-scrollbar">
                     <div className="max-w-3xl mx-auto">
                         {segments.map((seg, i) => (
                             <div key={i} className={`p-10 border-4 mb-10 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
