@@ -2,16 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 
 const INWORLD_VOICES = {
-    narrators: [
-        { id: "Selene", name: "Selene" },
-        { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
-    ],
-    female: [
-        { id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Anjali", name: "Anjali" }, { id: "Aoede", name: "Aoede" }, { id: "Ashley", name: "Ashley" }, { id: "Bianca", name: "Bianca" }, { id: "Celeste", name: "Celeste" }, { id: "Chloe", name: "Chloe" }, { id: "Claire", name: "Claire" }, { id: "Darlene", name: "Darlene" }, { id: "Deborah", name: "Deborah" }, { id: "Eleanor", name: "Eleanor" }, { id: "Evelyn", name: "Evelyn" }, { id: "Hana", name: "Hana" }, { id: "Jessica", name: "Jessica" }, { id: "Kelsey", name: "Kelsey" }, { id: "Lauren", name: "Lauren" }, { id: "Leda", name: "Leda" }, { id: "Loretta", name: "Loretta" }, { id: "Luna", name: "Luna" }, { id: "Marlene", name: "Marlene" }, { id: "Mia", name: "Mia" }, { id: "Miranda", name: "Miranda" }, { id: "Nadia", name: "Nadia" }, { id: "Naomi", name: "Naomi" }, { id: "Olivia", name: "Olivia" }, { id: "Pippa", name: "Pippa" }, { id: "Pixie", name: "Pixie" }, { id: "Riley", name: "Riley" }, { id: "Saanvi", name: "Saanvi" }, { id: "Sarah", name: "Sarah" }, { id: "Serena", name: "Serena" }, { id: "Sophie", name: "Sophie" }, { id: "Tessa", name: "Tessa" }, { id: "Veronica", name: "Veronica" }, { id: "Victoria", name: "Victoria" }
-    ],
-    male: [
-        { id: "Alex", name: "Alex" }, { id: "Arjun", name: "Arjun" }, { id: "Avery", name: "Avery" }, { id: "Blake", name: "Blake" }, { id: "Brandon", name: "Brandon" }, { id: "Brian", name: "Brian" }, { id: "Callum", name: "Callum" }, { id: "Carter", name: "Carter" }, { id: "Cedric", name: "Cedric" }, { id: "Clive", name: "Clive" }, { id: "Conrad", name: "Conrad" }, { id: "Damon", name: "Damon" }, { id: "Dennis", name: "Dennis" }, { id: "Derek", name: "Derek" }, { id: "Dominus", name: "Dominus" }, { id: "Duncan", name: "Duncan" }, { id: "Edward", name: "Edward" }, { id: "Elliott", name: "Elliott" }, { id: "Ethan", name: "Ethan" }, { id: "Evan", name: "Evan" }, { id: "Felix", name: "Felix" }, { id: "Gareth", name: "Gareth" }, { id: "Graham", name: "Graham" }, { id: "Hamish", name: "Hamish" }, { id: "Hank", name: "Hank" }, { id: "James", name: "James" }, { id: "Jason", name: "Jason" }, { id: "Jonah", name: "Jonah" }, { id: "Levi", name: "Levi" }, { id: "Liam", name: "Liam" }, { id: "Lucian", name: "Lucian" }, { id: "Malcolm", name: "Malcolm" }, { id: "Marcus", name: "Marcus" }, { id: "Mark", name: "Mark" }, { id: "Nate", name: "Nate" }, { id: "Oliver", name: "Oliver" }, { id: "Reed", name: "Reed" }, { id: "Rupert", name: "Rupert" }, { id: "Sebastian", name: "Sebastian" }, { id: "Simon", name: "Simon" }, { id: "Timothy", name: "Timothy" }, { id: "Trevor", name: "Trevor" }, { id: "Tristan", name: "Tristan" }, { id: "Tyler", name: "Tyler" }, { id: "Victor", name: "Victor" }, { id: "Vinny", name: "Vinny" }
-    ]
+    narrators: [{ id: "Selene", name: "Selene" }, { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }],
+    female: [{ id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Victoria", name: "Victoria" }],
+    male: [{ id: "Alex", name: "Alex" }, { id: "James", name: "James" }, { id: "Victor", name: "Victor" }]
 };
 
 const Scriptread = () => {
@@ -31,6 +24,16 @@ const Scriptread = () => {
     const isPlayingRef = useRef(false);
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
+
+    // THE VENDING MACHINE UNLOCK: Detects the redirect from your PayPal link
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('status') === 'paid') {
+            setIsUnlocked(true);
+            setShowPaywall(false);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }, []);
 
     useEffect(() => {
         audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -65,9 +68,7 @@ const Scriptread = () => {
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 const txt = currentActionText.trim();
-                if (!/^(ACT|END\sOF\sACT|SCENE)/i.test(txt)) {
-                    finalBlocks.push({ type: 'narrator', text: txt });
-                }
+                if (!/^(ACT|END\sOF\sACT|SCENE)/i.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
                 currentActionText = ""; 
             } 
         };
@@ -75,13 +76,9 @@ const Scriptread = () => {
         lines.forEach(line => {
             let text = line.text.trim();
             if (!text || /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || /^\d+\.$/.test(text) || text === ".") return;
-            const isActLabel = /^(ACT|END\sOF\sACT|SCENE)/i.test(text);
-            text = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior");
-            text = text.replace(/\([^)]*\)/g, "").trim();
-            if (!text) return;
-
+            text = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").replace(/\([^)]*\)/g, "").trim();
             const isSlug = text.startsWith("Interior") || text.startsWith("Exterior");
-            const isCenteredChar = line.x > 180 && text === text.toUpperCase() && text.length < 30 && !isSlug && !isActLabel;
+            const isCenteredChar = line.x > 180 && text === text.toUpperCase() && text.length < 30 && !isSlug;
 
             if (isSlug) { flushAction(); finalBlocks.push({ type: 'narrator', text }); }
             else if (isCenteredChar) { flushAction(); foundChars.add(text); finalBlocks.push({ type: 'dialogue', character: text, text: "" }); }
@@ -103,18 +100,14 @@ const Scriptread = () => {
             const buffer = await fetchAudio(seg.text, voice);
             if (!isPlayingRef.current) return;
             const source = audioContext.current.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioContext.current.destination);
+            source.buffer = buffer; source.connect(audioContext.current.destination);
             source.onended = () => { setTotalSeconds(prev => prev + buffer.duration); if (isPlayingRef.current) playSegment(index + 1); };
             activeSource.current = source; source.start();
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
     const masterAndExport = async () => {
-        if (!isUnlocked) {
-            setShowPaywall(true);
-            return;
-        }
+        if (!isUnlocked) { setShowPaywall(true); return; }
         setIsExporting(true); setExportProgress(0);
         const buffers = [];
         try {
@@ -143,24 +136,14 @@ const Scriptread = () => {
         setIsExporting(false);
     };
 
-    const VoiceListOptions = () => (
-        <>
-            <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-            <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-            <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-        </>
-    );
-
     return (
         <div className="flex flex-col h-screen w-screen bg-white text-black font-mono overflow-hidden fixed inset-0">
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The 60-second trial is over. Purchase the full AI table read and High-Fidelity Audio Export for $2.50.</p>
-                    <div className="flex flex-col gap-6">
-                        <a href="https://www.paypal.com/paypalme/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
-                        <button onClick={() => { setIsUnlocked(true); setShowPaywall(false); }} className="bg-gray-100 text-black px-12 py-4 font-black uppercase text-sm border-4 border-black hover:bg-black hover:text-white transition-all">I Have Paid - Unlock Script</button>
-                    </div>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight tracking-tight">The 60-second trial is over. Purchase the full read and High-Fidelity Audio Export for $2.50.</p>
+                    {/* YOUR LIVE PAYMENT LINK */}
+                    <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
 
@@ -170,7 +153,7 @@ const Scriptread = () => {
                     {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic">Trial: {Math.round(totalSeconds)}s / 60s</div>}
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic ${isUnlocked ? 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-200 opacity-50'}`}>
+                    <button onClick={masterAndExport} className="px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white">
                         {isExporting ? `Exporting ${exportProgress}%` : "Master & Export Wav"}
                     </button>
                     <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs cursor-pointer border-4 border-black hover:invert transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -196,12 +179,16 @@ const Scriptread = () => {
                     <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic">Narrator</p>
-                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
+                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                                {INWORLD_VOICES.narrators.concat(INWORLD_VOICES.female, INWORLD_VOICES.male).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                            </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <p className="text-[10px] font-black uppercase mb-2">{char}</p>
-                                <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
+                                <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                    {INWORLD_VOICES.narrators.concat(INWORLD_VOICES.female, INWORLD_VOICES.male).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                </select>
                             </div>
                         ))}
                     </div>
@@ -209,29 +196,25 @@ const Scriptread = () => {
 
                 <main className="flex-1 overflow-y-auto bg-white p-16 custom-scrollbar">
                     <div className="max-w-3xl mx-auto">
-                        {segments.length === 0 ? (
-                            <div className="h-[60vh] flex items-center justify-center opacity-10 italic font-black text-4xl uppercase tracking-tighter text-center">No Script Loaded</div>
-                        ) : (
-                            segments.map((seg, i) => (
-                                <div key={i} className={`p-10 border-4 mb-10 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
-                                    {seg.type === 'dialogue' && <p className="text-xs font-black uppercase mb-3 italic tracking-widest">{seg.character}</p>}
-                                    <p className="text-xl font-bold uppercase leading-tight tracking-tight">{seg.text}</p>
-                                </div>
-                            ))
-                        )}
+                        {segments.map((seg, i) => (
+                            <div key={i} className={`p-10 border-4 mb-10 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
+                                {seg.type === 'dialogue' && <p className="text-xs font-black uppercase mb-3 italic tracking-widest">{seg.character}</p>}
+                                <p className="text-xl font-bold uppercase leading-tight tracking-tight">{seg.text}</p>
+                            </div>
+                        ))}
                     </div>
                 </main>
             </div>
 
             <footer className="h-32 border-t-8 border-black bg-white flex justify-center items-center gap-20 shrink-0 z-50">
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-125 transition-transform"><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }}><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
                 <button onClick={() => {
                     if (isPlaying) stopAudio();
                     else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); }
                 }} className="bg-black text-white p-8 rounded-full shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)] active:translate-y-1 transition-all">
                     {isPlaying ? <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
                 </button>
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-125 transition-transform"><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg></button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }}><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg></button>
             </footer>
         </div>
     );
