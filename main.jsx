@@ -80,7 +80,6 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let currentActionText = "";
-
         const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
 
@@ -89,7 +88,6 @@ const Scriptread = () => {
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
                 const isJustNumber = /^\d+$/.test(txt);
                 const containsAct = /ACT/i.test(txt);
-
                 if (txt && (!isJustNumber || containsAct) && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
@@ -100,7 +98,6 @@ const Scriptread = () => {
         lines.forEach(line => {
             let text = line.text.trim();
             if (!text || ( /^\d+$/.test(text) && !/ACT/i.test(text) ) || systemJunk.test(text)) return;
-            
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             const isTechnical = narratorTechnical.test(text);
             const isCharacter = line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !isSlug && !isTechnical;
@@ -186,11 +183,10 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The 60-second trial is over. Purchase the full read and export for $2.50.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The trial is over. Purchase full read and export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
-
             <header className="h-24 border-b-8 border-black px-8 flex justify-between items-center bg-white shrink-0 z-50">
                 <div className="flex items-center gap-8">
                     <h1 className="text-3xl font-black uppercase italic tracking-tighter">Scriptread</h1>
@@ -216,7 +212,6 @@ const Scriptread = () => {
                     </label>
                 </div>
             </header>
-
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 border-r-8 border-black bg-gray-50 flex flex-col overflow-hidden shrink-0">
                     <div className="p-4 bg-black text-white font-black uppercase text-center italic tracking-widest text-sm">Cast List</div>
@@ -243,7 +238,6 @@ const Scriptread = () => {
                         ))}
                     </div>
                 </aside>
-
                 <main className="flex-1 overflow-y-auto bg-white p-16 custom-scrollbar">
                     <div className="max-w-3xl mx-auto">
                         {segments.map((seg, i) => (
@@ -255,7 +249,6 @@ const Scriptread = () => {
                     </div>
                 </main>
             </div>
-
             <footer className="h-32 border-t-8 border-black bg-white flex justify-center items-center gap-20 shrink-0 z-50">
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }}><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
                 <button onClick={() => {
