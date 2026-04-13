@@ -65,19 +65,19 @@ const Scriptread = () => {
         const foundChars = new Set();
         let currentActionText = "";
 
-        // Words that the Narrator SHOULD read but should NEVER be "Characters"
-        const narratorTechnical = /^(ACT|FADE|CUT\sTO|DISSOLVE|EPISODE|TITLE|WRITTEN|BY)/i;
-        // Words to ignore entirely (Page info, system markers)
-        const ignoreEntirely = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
+        // NARRATOR READS THESE (Technical/Structure)
+        const narratorMustRead = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sOF)/i;
+        // JUNK TO IGNORE ENTIRELY
+        const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
 
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim();
-                // STRIP EVERYTHING IN PARENTHESES
+                // 1. STRIP ALL PARENTHESES
                 txt = txt.replace(/\([^)]*\)/g, "").trim();
                 
-                // If text exists and isn't just a page number, Narrator reads it
-                if (txt && !/^\d+$/.test(txt) && !ignoreEntirely.test(txt)) {
+                // 2. CHECK: If it's NOT a page number and NOT junk, Narrator reads it
+                if (txt && !/^\d+$/.test(txt) && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
                 currentActionText = ""; 
@@ -87,31 +87,32 @@ const Scriptread = () => {
         lines.forEach(line => {
             let text = line.text.trim();
             
-            // 1. KILL PAGE NUMBERS IMMEDIATELY
-            if (!text || /^\d+$/.test(text) || ignoreEntirely.test(text)) return;
+            // KILL PAGE NUMBERS AND JUNK
+            if (!text || /^\d+$/.test(text) || systemJunk.test(text)) return;
             
-            // 2. DETECT SLUGS
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             
-            // 3. DETECT CHARACTERS: Centered, Caps, Not a Slug, Not an Act Break/Fade
+            // CHARACTER CHECK: Centered, All Caps, Not a Slug, Not an Act/Fade label
             const isCharacter = line.x > 180 && 
                                 text === text.toUpperCase() && 
                                 !isSlug && 
-                                !narratorTechnical.test(text) &&
-                                !ignoreEntirely.test(text);
+                                !narratorMustRead.test(text);
 
             if (isSlug) { 
                 flushAction(); 
-                finalBlocks.push({ type: 'narrator', text: text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior") }); 
+                // Slugs get cleaned (strip parens) and pushed to Narrator
+                let cleanSlug = text.replace(/\([^)]*\)/g, "").replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").trim();
+                finalBlocks.push({ type: 'narrator', text: cleanSlug }); 
             } else if (isCharacter) { 
                 flushAction(); 
-                const cleanChar = text.replace(/\([^)]*\)/g, "").trim();
-                if (cleanChar && !/^\d+$/.test(cleanChar)) {
-                    foundChars.add(cleanChar); 
-                    finalBlocks.push({ type: 'dialogue', character: cleanChar, text: "" }); 
+                // Strip (V.O.) or (CONT'D) for the Cast List
+                const cleanName = text.replace(/\([^)]*\)/g, "").trim();
+                if (cleanName && !/^\d+$/.test(cleanName) && !narratorMustRead.test(cleanName)) {
+                    foundChars.add(cleanName); 
+                    finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); 
                 }
             } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                // Characters read dialogue but skip notes in parentheses
+                // Dialogue: Strip parentheses
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } else { 
@@ -173,7 +174,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The 60-second trial is over. Purchase the full read and High-Fidelity Export for $2.50.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">Purchase full read and export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
