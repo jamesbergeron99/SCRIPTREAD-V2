@@ -57,29 +57,36 @@ const Scriptread = () => {
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
-    // ACTING LOGIC: Analyzes every line (dialogue OR narrator) for emotional intensity
-    const getActingStyleForText = (text) => {
-        // Trigger words for drama, conflict, and urgency
-        const intensityRegex = /!|dark|blood|dead|kill|scream|gun|fire|shadow|fear|intense|dramatic|love|hate|stop|look|help|please|no|away/i;
+    // GENDER DETECTION LOGIC
+    const autoAssignVoice = (name) => {
+        const femaleNames = ["DEE", "ABBY", "AMINA", "BIANCA", "CHLOE", "CLAIRE", "DARLENE", "DEBORAH", "ELEANOR", "EVELYN", "HANA", "JESSICA", "SARAH", "VICTORIA", "MIA", "LUNA", "SOPHIE", "TESSA"];
+        const maleNames = ["FRANK", "ALEX", "BRANDON", "BRIAN", "CALLUM", "CARTER", "CEDRIC", "CLIVE", "CONRAD", "DAMON", "DENNIS", "DEREK", "ETHAN", "EVAN", "FELIX", "JAMES", "JASON", "SIMON", "VICTOR"];
         
-        if (intensityRegex.test(text)) {
-            // Uses the high-fidelity "bold" model for emotional performances
-            return "inworld-tts-1.5-bold"; 
+        const upperName = name.toUpperCase();
+        if (femaleNames.some(n => upperName.includes(n))) {
+            return INWORLD_VOICES.female[Math.floor(Math.random() * INWORLD_VOICES.female.length)].id;
         }
-        // Fallback to high-def max for cleaner, standard reading
-        return "inworld-tts-1.5-max";
+        if (maleNames.some(n => upperName.includes(n))) {
+            return INWORLD_VOICES.male[Math.floor(Math.random() * INWORLD_VOICES.male.length)].id;
+        }
+        // Default based on generic probability or fallback
+        return "Abby"; 
     };
 
     const fetchAudio = async (text, voiceId) => {
-        const modelToUse = getActingStyleForText(text);
-        
+        // Phonetic Fixes
+        let cleanedText = text
+            .replace(/\bDEE\b/g, "Dee")
+            .replace(/\bsugar\b/gi, "shuger");
+
+        // Force "Bold" model for everyone to ensure emotion
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({ 
-                text, 
+                text: cleanedText, 
                 voiceId: voiceId || "Abby", 
-                modelId: modelToUse 
+                modelId: "inworld-tts-1.5-bold" 
             })
         });
         const data = await response.json();
@@ -89,8 +96,7 @@ const Scriptread = () => {
     const previewVoice = async (vId, charName) => {
         if (audioContext.current.state === 'suspended') audioContext.current.resume();
         try {
-            const auditionText = `Hello, I'm auditioning for ${charName}.`;
-            const buffer = await fetchAudio(auditionText, vId);
+            const buffer = await fetchAudio(`Hello, I'm ${charName}.`, vId);
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer; source.connect(audioContext.current.destination); source.start();
         } catch (e) {}
@@ -101,6 +107,7 @@ const Scriptread = () => {
         const foundChars = new Set();
         let currentActionText = "";
         let hasHitFirstSlug = false;
+        let newVoiceMap = { Narrator: "Selene" };
 
         const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
@@ -108,8 +115,7 @@ const Scriptread = () => {
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
-                const isJustNumber = /^\d+$/.test(txt);
-                if (txt && !isJustNumber && !systemJunk.test(txt)) {
+                if (txt && !/^\d+$/.test(txt) && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
                 currentActionText = ""; 
@@ -131,17 +137,17 @@ const Scriptread = () => {
                 return;
             }
 
-            if (isSlug) { 
+            if (isSlug || isTechnical) { 
                 flushAction(); 
-                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").trim() }); 
-            } else if (isTechnical) {
-                flushAction();
-                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() });
-            } else if (hasHitFirstSlug && line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isSlug && !isTechnical) { 
+                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); 
+            } else if (line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isSlug && !isTechnical) { 
                 flushAction(); 
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName && !/^\d+$/.test(cleanName)) {
                     foundChars.add(cleanName); 
+                    if (!newVoiceMap[cleanName]) {
+                        newVoiceMap[cleanName] = autoAssignVoice(cleanName);
+                    }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); 
                 }
             } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
@@ -152,6 +158,7 @@ const Scriptread = () => {
             }
         });
         flushAction();
+        setVoiceMap(newVoiceMap);
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
     };
@@ -213,7 +220,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The 60-second trial is over. Purchase the full read and export for $2.50.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">Trial over. Full read and export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
