@@ -111,7 +111,7 @@ const Scriptread = () => {
     };
 
     const masterAndExport = async () => {
-        if (!isUnlocked) { setShowPaywall(true); return; }
+        if (!isUnlocked) return;
         setIsExporting(true); setExportProgress(0);
         const buffers = [];
         try {
@@ -125,23 +125,20 @@ const Scriptread = () => {
             const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
             const channelData = masterBuffer.getChannelData(0);
             let offset = 0; buffers.forEach(b => { channelData.set(b.getChannelData(0), offset); offset += b.length; });
-            const wavData = encodeWav(masterBuffer);
+            
+            const wavLen = masterBuffer.length * 2; const view = new DataView(new ArrayBuffer(44 + wavLen));
+            const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
+            writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
+            view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
+            view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
+            const data = masterBuffer.getChannelData(0); let off = 44;
+            for (let i=0; i<data.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, data[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+            
             const link = document.createElement('a'); 
-            link.href = URL.createObjectURL(new Blob([wavData], { type: 'audio/wav' }));
+            link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
             link.download = "Scriptread_Master.wav"; link.click();
         } catch (e) {}
         setIsExporting(false);
-    };
-
-    const encodeWav = (buffer) => {
-        const length = buffer.length * 2; const view = new DataView(new ArrayBuffer(44 + length));
-        const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
-        writeString(0, 'RIFF'); view.setUint32(4, 36 + length, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
-        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
-        view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, length, true);
-        const data = buffer.getChannelData(0); let offset = 44;
-        for (let i=0; i<data.length; i++, offset+=2) { const s = Math.max(-1, Math.min(1, data[i])); view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
-        return view.buffer;
     };
 
     const VoiceListOptions = () => (
@@ -157,7 +154,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight">60-second trial complete. Pay $2.50 to finish listening and enable the High-Fidelity WAV Export.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The 60-second trial is over. Purchase the full AI table read and High-Fidelity Audio Export for $2.50.</p>
                     <div className="flex flex-col gap-6">
                         <a href="https://www.paypal.com/paypalme/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                         <button onClick={() => { setIsUnlocked(true); setShowPaywall(false); }} className="bg-gray-100 text-black px-12 py-4 font-black uppercase text-sm border-4 border-black hover:bg-black hover:text-white transition-all">I Have Paid - Unlock Script</button>
@@ -165,16 +162,18 @@ const Scriptread = () => {
                 </div>
             )}
 
-            <header className="h-24 border-b-8 border-black px-8 flex justify-between items-center bg-white shrink-0 z-50">
+            <header className="h-24 border-b-8 border-black px-8 flex justify-between items-center bg-white shrink-0 z-50 shadow-sm">
                 <div className="flex items-center gap-8">
                     <h1 className="text-3xl font-black uppercase italic tracking-tighter">Scriptread</h1>
                     {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic">Trial: {Math.round(totalSeconds)}s / 60s</div>}
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className="px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic">
-                        {isExporting ? `Exporting ${exportProgress}%` : "Master & Export Wav"}
-                    </button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs cursor-pointer border-4 border-black hover:invert transition-all">
+                    {isUnlocked && (
+                        <button onClick={masterAndExport} className="px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            {isExporting ? `Exporting ${exportProgress}%` : "Master & Export Wav"}
+                        </button>
+                    )}
+                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs cursor-pointer border-4 border-black hover:invert transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
@@ -196,17 +195,13 @@ const Scriptread = () => {
                     <div className="p-4 bg-black text-white font-black uppercase text-center italic tracking-widest text-sm">Cast List</div>
                     <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <p className="text-[10px] font-black uppercase text-gray-400 mb-2">Narrator</p>
-                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                <VoiceListOptions />
-                            </select>
+                            <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic">Narrator</p>
+                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none cursor-pointer" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <p className="text-[10px] font-black uppercase mb-2">{char}</p>
-                                <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    <VoiceListOptions />
-                                </select>
+                                <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none cursor-pointer" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
                     </div>
@@ -214,12 +209,16 @@ const Scriptread = () => {
 
                 <main className="flex-1 overflow-y-auto bg-white p-16 custom-scrollbar">
                     <div className="max-w-3xl mx-auto">
-                        {segments.map((seg, i) => (
-                            <div key={i} className={`p-10 border-4 mb-10 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
-                                {seg.type === 'dialogue' && <p className="text-xs font-black uppercase mb-3 italic tracking-widest">{seg.character}</p>}
-                                <p className="text-xl font-bold uppercase leading-tight tracking-tight">{seg.text}</p>
-                            </div>
-                        ))}
+                        {segments.length === 0 ? (
+                            <div className="h-[60vh] flex items-center justify-center opacity-10 italic font-black text-4xl uppercase tracking-tighter text-center">No Script Loaded</div>
+                        ) : (
+                            segments.map((seg, i) => (
+                                <div key={i} className={`p-10 border-4 mb-10 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
+                                    {seg.type === 'dialogue' && <p className="text-xs font-black uppercase mb-3 italic tracking-widest">{seg.character}</p>}
+                                    <p className="text-xl font-bold uppercase leading-tight tracking-tight">{seg.text}</p>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </main>
             </div>
