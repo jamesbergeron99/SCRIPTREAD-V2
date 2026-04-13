@@ -65,15 +65,19 @@ const Scriptread = () => {
         const foundChars = new Set();
         let currentActionText = "";
 
-        // Patterns that should NEVER be characters or spoken
-        const junkPatterns = /^(MORE|CONTINUED|CONT'D|PAGE|ACT|END\sOF|SCENE|\.)$/i;
+        // Words that the Narrator SHOULD read but should NEVER be "Characters"
+        const narratorTechnical = /^(ACT|FADE|CUT\sTO|DISSOLVE|EPISODE|TITLE|WRITTEN|BY)/i;
+        // Words to ignore entirely (Page info, system markers)
+        const ignoreEntirely = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
 
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim();
-                // Strip all parentheses content
+                // STRIP EVERYTHING IN PARENTHESES
                 txt = txt.replace(/\([^)]*\)/g, "").trim();
-                if (txt && !junkPatterns.test(txt) && !/^\d+$/.test(txt)) {
+                
+                // If text exists and isn't just a page number, Narrator reads it
+                if (txt && !/^\d+$/.test(txt) && !ignoreEntirely.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
                 currentActionText = ""; 
@@ -83,32 +87,31 @@ const Scriptread = () => {
         lines.forEach(line => {
             let text = line.text.trim();
             
-            // 1. STRICT PAGE NUMBER & JUNK FILTER: Skip if numeric or junk words
-            if (!text || /^\d+$/.test(text) || junkPatterns.test(text)) return;
+            // 1. KILL PAGE NUMBERS IMMEDIATELY
+            if (!text || /^\d+$/.test(text) || ignoreEntirely.test(text)) return;
             
             // 2. DETECT SLUGS
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             
-            // 3. DETECT CHARACTERS: Centered, Upper, MUST HAVE LETTERS, not a slug, not junk
+            // 3. DETECT CHARACTERS: Centered, Caps, Not a Slug, Not an Act Break/Fade
             const isCharacter = line.x > 180 && 
                                 text === text.toUpperCase() && 
-                                /[A-Z]/.test(text) && 
                                 !isSlug && 
-                                !junkPatterns.test(text);
+                                !narratorTechnical.test(text) &&
+                                !ignoreEntirely.test(text);
 
             if (isSlug) { 
                 flushAction(); 
                 finalBlocks.push({ type: 'narrator', text: text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior") }); 
             } else if (isCharacter) { 
                 flushAction(); 
-                // Strip (CONT'D) or (V.O.) for the Cast List
                 const cleanChar = text.replace(/\([^)]*\)/g, "").trim();
-                if (cleanChar && !junkPatterns.test(cleanChar) && !/^\d+$/.test(cleanChar)) {
+                if (cleanChar && !/^\d+$/.test(cleanChar)) {
                     foundChars.add(cleanChar); 
                     finalBlocks.push({ type: 'dialogue', character: cleanChar, text: "" }); 
                 }
             } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                // Strip parentheses from character lines
+                // Characters read dialogue but skip notes in parentheses
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } else { 
@@ -170,7 +173,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The trial is over. Purchase the full read and high-fidelity Export for $2.50.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The 60-second trial is over. Purchase the full read and High-Fidelity Export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
@@ -206,7 +209,7 @@ const Scriptread = () => {
                     <div className="p-4 bg-black text-white font-black uppercase text-center italic tracking-widest text-sm">Cast List</div>
                     <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic tracking-tight">Narrator</p>
+                            <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic">Narrator</p>
                             <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 {Object.values(INWORLD_VOICES).flat().map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                             </select>
