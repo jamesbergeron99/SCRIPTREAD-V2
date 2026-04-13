@@ -73,7 +73,10 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        const cleanedText = text.replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger");
+        // Fix for "Dee" spelled out and "Sugar" pronunciation
+        const cleanedText = text
+            .replace(/\bDEE\b/g, "Dee")
+            .replace(/\bsugar\b/gi, "shuger");
 
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
@@ -157,8 +160,22 @@ const Scriptread = () => {
         lines.forEach((line) => {
             let text = line.text.trim();
             if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
+            
+            // RESTORED SLUGLINE EXPANSION
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
-            if (isSlug) hasHitFirstSlug = true;
+            
+            if (isSlug) {
+                hasHitFirstSlug = true;
+                flushAction();
+                // Replace INT and EXT with full words for the voice
+                const expandedSlug = text
+                    .replace(/\bINT\b\.?/gi, "Interior")
+                    .replace(/\bEXT\b\.?/gi, "Exterior")
+                    .replace(/\([^)]*\)/g, "").trim();
+                finalBlocks.push({ type: 'narrator', text: expandedSlug });
+                return;
+            }
+
             const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
             
             if (!hasHitFirstSlug) {
@@ -167,10 +184,10 @@ const Scriptread = () => {
                 return;
             }
 
-            if (isSlug || isTechnical) { 
+            if (isTechnical) { 
                 flushAction(); 
                 finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); 
-            } else if (line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isSlug && !isTechnical) { 
+            } else if (line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isTechnical) { 
                 flushAction(); 
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName && !/^\d+$/.test(cleanName)) {
