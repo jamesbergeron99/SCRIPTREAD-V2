@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 
 const INWORLD_VOICES = {
     narrators: [
+        { id: "Serena", name: "Serena" },
         { id: "Selene", name: "Selene" },
         { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
     ],
@@ -17,7 +18,7 @@ const INWORLD_VOICES = {
 const Scriptread = () => {
     const [segments, setSegments] = useState([]);
     const [characters, setCharacters] = useState([]);
-    const [voiceMap, setVoiceMap] = useState({ Narrator: "Selene" });
+    const [voiceMap, setVoiceMap] = useState({ Narrator: "Serena" }); // Serena is now the default
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentIdx, setCurrentIdx] = useState(-1);
     const [isUnlocked, setIsUnlocked] = useState(false);
@@ -73,7 +74,6 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        // Fix for "Dee" spelled out and "Sugar" pronunciation
         const cleanedText = text
             .replace(/\bDEE\b/g, "Dee")
             .replace(/\bsugar\b/gi, "shuger");
@@ -142,7 +142,7 @@ const Scriptread = () => {
         const foundChars = new Set();
         let currentActionText = "";
         let hasHitFirstSlug = false;
-        let newVoiceMap = { Narrator: "Selene" };
+        let newVoiceMap = { Narrator: "Serena" }; // Ensuring Serena is default on re-parse
 
         const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
@@ -161,13 +161,11 @@ const Scriptread = () => {
             let text = line.text.trim();
             if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
             
-            // RESTORED SLUGLINE EXPANSION
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             
             if (isSlug) {
                 hasHitFirstSlug = true;
                 flushAction();
-                // Replace INT and EXT with full words for the voice
                 const expandedSlug = text
                     .replace(/\bINT\b\.?/gi, "Interior")
                     .replace(/\bEXT\b\.?/gi, "Exterior")
