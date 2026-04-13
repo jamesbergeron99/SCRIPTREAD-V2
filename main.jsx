@@ -25,7 +25,7 @@ const Scriptread = () => {
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
 
-    // THE VENDING MACHINE UNLOCK: Detects the redirect from your PayPal link
+    // THE ONLY UNLOCK PATH: Detecting the ?status=paid from PayPal
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get('status') === 'paid') {
@@ -121,19 +121,22 @@ const Scriptread = () => {
             const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
             const channelData = masterBuffer.getChannelData(0);
             let offset = 0; buffers.forEach(b => { channelData.set(b.getChannelData(0), offset); offset += b.length; });
-            
-            const wavLen = masterBuffer.length * 2; const view = new DataView(new ArrayBuffer(44 + wavLen));
-            const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
-            writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
-            view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
-            view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
-            const dataArr = masterBuffer.getChannelData(0); let off = 44;
-            for (let i=0; i<dataArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
-            
-            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
+            const wavData = encodeWav(masterBuffer);
+            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([wavData], { type: 'audio/wav' }));
             link.download = "Scriptread_Master.wav"; link.click();
         } catch (e) {}
         setIsExporting(false);
+    };
+
+    const encodeWav = (buffer) => {
+        const length = buffer.length * 2; const view = new DataView(new ArrayBuffer(44 + length));
+        const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
+        writeString(0, 'RIFF'); view.setUint32(4, 36 + length, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
+        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
+        view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, length, true);
+        const dataArr = buffer.getChannelData(0); let off = 44;
+        for (let i=0; i<dataArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+        return view.buffer;
     };
 
     return (
@@ -141,8 +144,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight tracking-tight">The 60-second trial is over. Purchase the full read and High-Fidelity Audio Export for $2.50.</p>
-                    {/* YOUR LIVE PAYMENT LINK */}
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The 60-second trial is over. Purchase the full read and High-Fidelity Audio Export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
@@ -153,7 +155,7 @@ const Scriptread = () => {
                     {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic">Trial: {Math.round(totalSeconds)}s / 60s</div>}
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className="px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white">
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic ${isUnlocked ? 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50'}`}>
                         {isExporting ? `Exporting ${exportProgress}%` : "Master & Export Wav"}
                     </button>
                     <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs cursor-pointer border-4 border-black hover:invert transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -178,16 +180,16 @@ const Scriptread = () => {
                     <div className="p-4 bg-black text-white font-black uppercase text-center italic tracking-widest text-sm">Cast List</div>
                     <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic">Narrator</p>
+                            <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic tracking-tight">Narrator</p>
                             <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                {INWORLD_VOICES.narrators.concat(INWORLD_VOICES.female, INWORLD_VOICES.male).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                {Object.values(INWORLD_VOICES).flat().map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                             </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                                <p className="text-[10px] font-black uppercase mb-2">{char}</p>
+                                <p className="text-[10px] font-black uppercase mb-2 tracking-tight">{char}</p>
                                 <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    {INWORLD_VOICES.narrators.concat(INWORLD_VOICES.female, INWORLD_VOICES.male).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                    {Object.values(INWORLD_VOICES).flat().map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                                 </select>
                             </div>
                         ))}
