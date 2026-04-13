@@ -61,7 +61,6 @@ const Scriptread = () => {
         
         const flushAction = () => { 
             if (currentActionText.trim()) { 
-                // Act Break Filter: Don't add to narrator blocks
                 const cleanText = currentActionText.trim();
                 const isActBreak = /^(ACT\s|END\sOF\sACT|SCENE\s)/i.test(cleanText);
                 if (!isActBreak) {
@@ -73,9 +72,8 @@ const Scriptread = () => {
 
         lines.forEach(line => {
             let text = line.text.trim();
-            // Page Number/Act Break character filter
-            const isPageNum = /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text);
-            const isActLabel = /^(ACT\s|END\sOF\sACT)/i.test(text);
+            const isPageNum = /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || /^\d+\.$/.test(text);
+            const isActLabel = /^(ACT\s|END\sOF\sACT|SCENE\s)/i.test(text);
             
             if (!text || isPageNum || isActLabel) return;
             
@@ -155,7 +153,7 @@ const Scriptread = () => {
     };
 
     return (
-        <div className="flex flex-col h-screen relative bg-white text-black font-mono">
+        <div className="flex flex-col h-screen w-screen fixed inset-0 bg-white text-black font-mono overflow-hidden">
             {showPaywall && (
                 <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[12px] border-black p-10 text-center">
                     <h2 className="text-3xl font-black uppercase italic mb-4">Support Production</h2>
@@ -171,9 +169,10 @@ const Scriptread = () => {
                     <button onClick={() => setShowPaywall(false)} className="mt-8 text-[10px] font-black underline uppercase">Go Back</button>
                 </div>
             )}
-            <header className="border-b-4 border-black p-4 flex justify-between items-center bg-white z-50">
+            
+            <header className="border-b-4 border-black p-4 flex justify-between items-center bg-white z-50 shrink-0">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-2xl font-black uppercase italic">Scriptread</h1>
+                    <h1 className="text-2xl font-black uppercase italic tracking-tighter">Scriptread</h1>
                     {!isUnlocked && <div className="bg-yellow-400 border-2 border-black px-2 py-1 text-[10px] font-black uppercase italic">Trial: {Math.round(totalSeconds)}s / 30s</div>}
                 </div>
                 <div className="flex gap-3">
@@ -196,44 +195,51 @@ const Scriptread = () => {
                     </label>
                 </div>
             </header>
+
             <div className="flex-1 flex overflow-hidden">
-                <aside className="w-64 border-r-4 border-black bg-gray-50 overflow-y-auto custom-scrollbar">
-                    <div className="p-2 bg-black text-white font-black text-[10px] uppercase text-center sticky top-0 italic">Cast</div>
+                <aside className="w-64 border-r-4 border-black bg-gray-50 overflow-y-auto shrink-0 custom-scrollbar">
+                    <div className="p-2 bg-black text-white font-black text-[10px] uppercase text-center sticky top-0 italic z-10">Cast</div>
                     <div className="p-4 space-y-6">
                         <div className="p-2 border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                             <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Narrator</p>
-                            <select className="w-full border-2 border-black p-1 text-[10px] font-bold outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                            <select className="w-full border-2 border-black p-1 text-[10px] font-bold outline-none cursor-pointer" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 {INWORLD_VOICES.narrators.concat(INWORLD_VOICES.female, INWORLD_VOICES.male).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                             </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-2 border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                                 <p className="text-[9px] font-black uppercase mb-1">{char}</p>
-                                <select className="w-full border-2 border-black p-1 text-[10px] font-bold outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                <select className="w-full border-2 border-black p-1 text-[10px] font-bold outline-none cursor-pointer" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     {INWORLD_VOICES.female.concat(INWORLD_VOICES.male).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                                 </select>
                             </div>
                         ))}
                     </div>
                 </aside>
+
                 <main className="flex-1 overflow-y-auto bg-white p-8 pb-32 custom-scrollbar">
-                    {segments.map((seg, i) => (
-                        <div key={i} className={`p-6 border-2 mb-4 transition-all ${currentIdx === i ? 'bg-black text-white scale-[1.01]' : 'border-black opacity-20'}`}>
-                            {seg.type === 'dialogue' && <p className="text-[10px] font-black uppercase mb-1 italic">{seg.character}</p>}
-                            <p className="text-sm font-bold uppercase leading-tight">{seg.text}</p>
-                        </div>
-                    ))}
+                    {segments.length === 0 ? (
+                        <div className="h-full flex items-center justify-center opacity-20 italic font-black uppercase">No script loaded</div>
+                    ) : (
+                        segments.map((seg, i) => (
+                            <div key={i} className={`p-6 border-2 mb-4 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.01] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
+                                {seg.type === 'dialogue' && <p className="text-[10px] font-black uppercase mb-1 italic">{seg.character}</p>}
+                                <p className="text-sm font-bold uppercase leading-tight tracking-tight">{seg.text}</p>
+                            </div>
+                        ))
+                    )}
                 </main>
             </div>
-            <footer className="shrink-0 border-t-4 border-black p-6 bg-white flex justify-center gap-10">
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }}><svg width="32" height="32" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
+
+            <footer className="shrink-0 border-t-4 border-black p-6 bg-white flex justify-center items-center gap-10 z-50">
+                <button className="hover:scale-110 transition-transform" onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }}><svg width="32" height="32" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
                 <button onClick={() => {
                     if (isPlaying) stopAudio();
                     else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); }
-                }} className="bg-black text-white p-5 rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 transition-all">
+                }} className="bg-black text-white p-6 rounded-full shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none transition-all">
                     {isPlaying ? <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
                 </button>
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }}><svg width="32" height="32" viewBox="0 0 24 24" fill="black"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg></button>
+                <button className="hover:scale-110 transition-transform" onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }}><svg width="32" height="32" viewBox="0 0 24 24" fill="black"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg></button>
             </footer>
         </div>
     );
