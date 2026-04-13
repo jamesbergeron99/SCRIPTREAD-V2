@@ -71,30 +71,46 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let currentActionText = "";
+
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 const txt = currentActionText.trim();
-                if (!/^(ACT|END\sOF\sACT|SCENE)/i.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
+                // SILENCE ACT BREAKS: Do not add them to the narrator's read list
+                if (!/^(ACT|END\sOF\sACT|SCENE)/i.test(txt)) {
+                    finalBlocks.push({ type: 'narrator', text: txt });
+                }
                 currentActionText = ""; 
             } 
         };
 
         lines.forEach(line => {
             let text = line.text.trim();
-            if (!text || /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || /^\d+\.$/.test(text)) return;
             
+            // KILL PAGE NUMBERS & JUNK STRINGS: Stop them from entering the system at all
+            if (!text || /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || /^\d+\.$/.test(text) || text === ".") return;
+            
+            // KILL ACT LABELS FROM CAST LIST: If it's an Act header, don't treat it as a character
+            const isActLabel = /^(ACT|END\sOF\sACT|SCENE)/i.test(text);
+
             text = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior");
             text = text.replace(/\([^)]*\)/g, "").trim();
             if (!text) return;
 
             const isSlug = text.startsWith("Interior") || text.startsWith("Exterior");
-            const isCenteredChar = line.x > 180 && text === text.toUpperCase() && text.length < 30 && !isSlug;
+            const isCenteredChar = line.x > 180 && text === text.toUpperCase() && text.length < 30 && !isSlug && !isActLabel;
 
-            if (isSlug) { flushAction(); finalBlocks.push({ type: 'narrator', text }); }
-            else if (isCenteredChar) { flushAction(); foundChars.add(text); finalBlocks.push({ type: 'dialogue', character: text, text: "" }); }
-            else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
+            if (isSlug) { 
+                flushAction(); 
+                finalBlocks.push({ type: 'narrator', text }); 
+            } else if (isCenteredChar) { 
+                flushAction(); 
+                foundChars.add(text); 
+                finalBlocks.push({ type: 'dialogue', character: text, text: "" }); 
+            } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 finalBlocks[finalBlocks.length - 1].text += " " + text;
-            } else { currentActionText += " " + text; }
+            } else { 
+                currentActionText += " " + text; 
+            }
         });
         flushAction();
         setCharacters([...foundChars].sort());
@@ -124,7 +140,8 @@ const Scriptread = () => {
         try {
             for (let i = 0; i < segments.length; i++) {
                 setExportProgress(Math.round((i / segments.length) * 100));
-                const buffer = await fetchAudio(segments[i].text, segments[i].type === 'narrator' ? voiceMap.Narrator : (voiceMap[segments[i].character] || "Abby"));
+                const voice = segments[i].type === 'narrator' ? voiceMap.Narrator : (voiceMap[segments[i].character] || "Abby");
+                const buffer = await fetchAudio(segments[i].text, voice);
                 buffers.push(buffer);
             }
             const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
@@ -167,7 +184,7 @@ const Scriptread = () => {
                     <a href="https://paypal.me/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Donate $2.50 via PayPal</a>
                     <div className="mt-12 border-t-8 border-black pt-8 w-80">
                         <input type="text" value={inputCode} onChange={(e) => setInputCode(e.target.value)} placeholder="ENTER CODE" className="w-full border-4 border-black p-3 text-center font-black uppercase mb-4 outline-none" />
-                        <button onClick={() => { if(inputCode.toUpperCase()==='FRANK2026'){setIsUnlocked(true);setShowPaywall(false);} }} className="w-full bg-black text-white py-4 font-black uppercase hover:invert transition-all">Unlock Studio</button>
+                        <button onClick={() => { if(inputCode.toUpperCase()==='FRANK2026'){setIsUnlocked(true);setShowPaywall(false);} }} className="bg-black text-white px-6 font-black text-sm uppercase">Enter</button>
                     </div>
                 </div>
             )}
