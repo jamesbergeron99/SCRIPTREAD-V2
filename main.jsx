@@ -67,10 +67,11 @@ const Scriptread = () => {
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
-    const previewVoice = async (vId) => {
+    const previewVoice = async (vId, charName) => {
         if (audioContext.current.state === 'suspended') audioContext.current.resume();
         try {
-            const buffer = await fetchAudio("Voice check.", vId);
+            const auditionText = `Hello, I'm auditioning for ${charName}.`;
+            const buffer = await fetchAudio(auditionText, vId);
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer; source.connect(audioContext.current.destination); source.start();
         } catch (e) {}
@@ -219,7 +220,7 @@ const Scriptread = () => {
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <div className="flex justify-between items-center mb-2">
                                 <p className="text-[10px] font-black uppercase text-gray-400">Narrator</p>
-                                <button onClick={() => previewVoice(voiceMap.Narrator)} className="text-[9px] font-black underline uppercase">Hear</button>
+                                <button onClick={() => previewVoice(voiceMap.Narrator, "The Narrator")} className="text-[9px] font-black underline uppercase">Hear</button>
                             </div>
                             <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 <VoiceListOptions />
@@ -229,7 +230,7 @@ const Scriptread = () => {
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <div className="flex justify-between items-center mb-2">
                                     <p className="text-[10px] font-black uppercase tracking-tight">{char}</p>
-                                    <button onClick={() => previewVoice(voiceMap[char] || "Abby")} className="text-[9px] font-black underline uppercase">Hear</button>
+                                    <button onClick={() => previewVoice(voiceMap[char] || "Abby", char)} className="text-[9px] font-black underline uppercase">Hear</button>
                                 </div>
                                 <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <VoiceListOptions />
