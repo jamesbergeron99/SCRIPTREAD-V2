@@ -65,19 +65,17 @@ const Scriptread = () => {
         const foundChars = new Set();
         let currentActionText = "";
 
-        // RULES: Narrator reads these, but they are NOT characters
-        const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sOF)/i;
-        // JUNK: Ignore these completely (System noise)
+        const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
 
         const flushAction = () => { 
             if (currentActionText.trim()) { 
-                let txt = currentActionText.trim();
-                // STRIP EVERYTHING IN PARENTHESES FIRST
-                txt = txt.replace(/\([^)]*\)/g, "").trim();
-                
-                // Final Check: Not a number, not junk
-                if (txt && !/^\d+$/.test(txt) && !systemJunk.test(txt)) {
+                let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
+                // Kill if just a number, but SAVE it if it contains "ACT"
+                const isJustNumber = /^\d+$/.test(txt);
+                const containsAct = /ACT/i.test(txt);
+
+                if (txt && (!isJustNumber || containsAct) && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
                 currentActionText = ""; 
@@ -86,31 +84,18 @@ const Scriptread = () => {
 
         lines.forEach(line => {
             let text = line.text.trim();
+            if (!text || ( /^\d+$/.test(text) && !/ACT/i.test(text) ) || systemJunk.test(text)) return;
             
-            // 1. HARD KILL FOR PAGE NUMBERS
-            if (!text || /^\d+$/.test(text) || systemJunk.test(text)) return;
-            
-            // 2. DETECT SLUGS
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
-            
-            // 3. DETECT ACT BREAKS / TECHNICALS (NARRATOR ONLY)
             const isTechnical = narratorTechnical.test(text);
-
-            // 4. DETECT CHARACTERS: Centered, Caps, Not a Slug, Not Technical, Not a Number
-            const isCharacter = line.x > 180 && 
-                                text === text.toUpperCase() && 
-                                /[A-Z]/.test(text) &&
-                                !isSlug && 
-                                !isTechnical;
+            const isCharacter = line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !isSlug && !isTechnical;
 
             if (isSlug) { 
                 flushAction(); 
-                let cleanSlug = text.replace(/\([^)]*\)/g, "").replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").trim();
-                finalBlocks.push({ type: 'narrator', text: cleanSlug }); 
+                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").trim() }); 
             } else if (isTechnical) {
                 flushAction();
-                let cleanTech = text.replace(/\([^)]*\)/g, "").trim();
-                finalBlocks.push({ type: 'narrator', text: cleanTech });
+                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() });
             } else if (isCharacter) { 
                 flushAction(); 
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
@@ -119,7 +104,6 @@ const Scriptread = () => {
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); 
                 }
             } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                // Characters read dialogue but skip (actor notes)
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } else { 
@@ -161,7 +145,6 @@ const Scriptread = () => {
             const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
             const channelData = masterBuffer.getChannelData(0);
             let offset = 0; buffers.forEach(b => { channelData.set(b.getChannelData(0), offset); offset += b.length; });
-            
             const wavLen = masterBuffer.length * 2; const view = new DataView(new ArrayBuffer(44 + wavLen));
             const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
             writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
@@ -169,19 +152,26 @@ const Scriptread = () => {
             view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
             const dataArr = masterBuffer.getChannelData(0); let off = 44;
             for (let i=0; i<dataArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
-            
             const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
             link.download = "Scriptread_Master.wav"; link.click();
         } catch (e) {}
         setIsExporting(false);
     };
 
+    const VoiceListOptions = () => (
+        <>
+            <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+        </>
+    );
+
     return (
         <div className="flex flex-col h-screen w-screen bg-white text-black font-mono overflow-hidden fixed inset-0">
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">Purchase the full read and high-fidelity Export for $2.50.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">Purchase the full read and export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
@@ -219,14 +209,14 @@ const Scriptread = () => {
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <p className="text-[10px] font-black uppercase text-gray-400 mb-2 italic">Narrator</p>
                             <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                {Object.values(INWORLD_VOICES).flat().map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                <VoiceListOptions />
                             </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <p className="text-[10px] font-black uppercase mb-2 tracking-tight">{char}</p>
                                 <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    {Object.values(INWORLD_VOICES).flat().map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                    <VoiceListOptions />
                                 </select>
                             </div>
                         ))}
