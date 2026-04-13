@@ -75,7 +75,7 @@ const Scriptread = () => {
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 const txt = currentActionText.trim();
-                // SILENCE ACT BREAKS: Do not add them to the narrator's read list
+                // SILENCE ACT BREAKS: Narrative reads slugs/action, skips Act headers.
                 if (!/^(ACT|END\sOF\sACT|SCENE)/i.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
@@ -86,10 +86,9 @@ const Scriptread = () => {
         lines.forEach(line => {
             let text = line.text.trim();
             
-            // KILL PAGE NUMBERS & JUNK STRINGS: Stop them from entering the system at all
+            // FILTER JUNK: Kill page numbers and single periods from Cast List
             if (!text || /^\d+$/.test(text) || /^PAGE\s+\d+$/i.test(text) || /^\d+\.$/.test(text) || text === ".") return;
             
-            // KILL ACT LABELS FROM CAST LIST: If it's an Act header, don't treat it as a character
             const isActLabel = /^(ACT|END\sOF\sACT|SCENE)/i.test(text);
 
             text = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior");
@@ -180,11 +179,12 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6">Support Production</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600">Trial complete. To continue reading with professional AI narration, please donate $2.50 per script read.</p>
-                    <a href="https://paypal.me/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Donate $2.50 via PayPal</a>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600">The 30-second trial has ended. To continue reading with professional AI narration, please donate $2.50 per script read.</p>
+                    {/* FIXED PAYPAL LINK: Opens direct payment for $2.50 */}
+                    <a href="https://www.paypal.com/paypalme/jamesbergeron1252/2.50" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Donate $2.50 via PayPal</a>
                     <div className="mt-12 border-t-8 border-black pt-8 w-80">
                         <input type="text" value={inputCode} onChange={(e) => setInputCode(e.target.value)} placeholder="ENTER CODE" className="w-full border-4 border-black p-3 text-center font-black uppercase mb-4 outline-none" />
-                        <button onClick={() => { if(inputCode.toUpperCase()==='FRANK2026'){setIsUnlocked(true);setShowPaywall(false);} }} className="bg-black text-white px-6 font-black text-sm uppercase">Enter</button>
+                        <button onClick={() => { if(inputCode.toUpperCase()==='FRANK2026'){setIsUnlocked(true);setShowPaywall(false);} }} className="w-full bg-black text-white py-4 font-black uppercase hover:invert transition-all">Unlock Studio</button>
                     </div>
                 </div>
             )}
