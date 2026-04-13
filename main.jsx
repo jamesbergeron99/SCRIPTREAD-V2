@@ -65,14 +65,15 @@ const Scriptread = () => {
         const foundChars = new Set();
         let currentActionText = "";
 
-        const junkPatterns = /^(MORE|CONTINUED|CONT'D|PAGE|ACT|END\sOF|SCENE|\d+$|\.$)/i;
+        // Patterns that should NEVER be characters or spoken
+        const junkPatterns = /^(MORE|CONTINUED|CONT'D|PAGE|ACT|END\sOF|SCENE|\.)$/i;
 
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim();
-                // STRIP ALL PARENTHESES FROM NARRATOR
+                // Strip all parentheses content
                 txt = txt.replace(/\([^)]*\)/g, "").trim();
-                if (txt && !junkPatterns.test(txt)) {
+                if (txt && !junkPatterns.test(txt) && !/^\d+$/.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
                 currentActionText = ""; 
@@ -82,28 +83,32 @@ const Scriptread = () => {
         lines.forEach(line => {
             let text = line.text.trim();
             
-            // 1. GLOBAL JUNK FILTER: Skip page numbers, "MORE", "CONTINUED"
-            if (!text || junkPatterns.test(text)) return;
+            // 1. STRICT PAGE NUMBER & JUNK FILTER: Skip if numeric or junk words
+            if (!text || /^\d+$/.test(text) || junkPatterns.test(text)) return;
             
             // 2. DETECT SLUGS
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             
-            // 3. DETECT CHARACTERS: Centered, all caps, not a slug, not junk
-            const isCharacter = line.x > 180 && text === text.toUpperCase() && text.length < 30 && !isSlug && !junkPatterns.test(text);
+            // 3. DETECT CHARACTERS: Centered, Upper, MUST HAVE LETTERS, not a slug, not junk
+            const isCharacter = line.x > 180 && 
+                                text === text.toUpperCase() && 
+                                /[A-Z]/.test(text) && 
+                                !isSlug && 
+                                !junkPatterns.test(text);
 
             if (isSlug) { 
                 flushAction(); 
                 finalBlocks.push({ type: 'narrator', text: text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior") }); 
             } else if (isCharacter) { 
                 flushAction(); 
-                // Strip (CONT'D) or (V.O.) from character name for the Cast List
+                // Strip (CONT'D) or (V.O.) for the Cast List
                 const cleanChar = text.replace(/\([^)]*\)/g, "").trim();
-                if (cleanChar && !junkPatterns.test(cleanChar)) {
+                if (cleanChar && !junkPatterns.test(cleanChar) && !/^\d+$/.test(cleanChar)) {
                     foundChars.add(cleanChar); 
                     finalBlocks.push({ type: 'dialogue', character: cleanChar, text: "" }); 
                 }
             } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                // STRIP PARENTHETICALS FROM DIALOGUE
+                // Strip parentheses from character lines
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } else { 
@@ -165,7 +170,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">60-second trial over. Pay $2.50 to finish listening and export.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">The trial is over. Purchase the full read and high-fidelity Export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
