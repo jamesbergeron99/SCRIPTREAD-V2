@@ -82,7 +82,6 @@ const Scriptread = () => {
         const foundChars = new Set();
         let currentActionText = "";
 
-        // Structural elements Narrator should read but ARE NOT characters
         const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
 
@@ -90,7 +89,6 @@ const Scriptread = () => {
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
                 const isJustNumber = /^\d+$/.test(txt);
-                // If it's a structural label or general action, Narrator reads it.
                 if (txt && (!isJustNumber || narratorTechnical.test(txt)) && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
@@ -100,17 +98,21 @@ const Scriptread = () => {
 
         lines.forEach((line, index) => {
             let text = line.text.trim();
-            // 1. Skip numeric page numbers and generic junk immediately
             if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
             
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
-            const isTechnical = narratorTechnical.test(text);
+            const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
             
-            // Character detection: Centered, all caps, must have letters, not structural, not a slug
-            const isCharacter = line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !isSlug && !isTechnical;
+            // Character detection: Centered, all caps, letters only, NO QUOTES, not a slug, not technical
+            const isCharacter = line.x > 180 && 
+                                text === text.toUpperCase() && 
+                                /[A-Z]/.test(text) && 
+                                !text.includes('"') && 
+                                !isSlug && 
+                                !isTechnical;
 
-            // Handle the very first line (Title Page)
-            if (index === 0 && text) {
+            // Handle Title Zone (First 10 lines)
+            if (index < 10 && !isSlug && !isCharacter) {
                 finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() });
                 return;
             }
