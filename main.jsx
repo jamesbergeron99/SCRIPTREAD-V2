@@ -29,7 +29,7 @@ const Scriptread = () => {
     const audioContext = useRef(null);
     const activeSource = useRef(null);
     const isPlayingRef = useRef(false);
-    const preloadedAudio = useRef({}); // New: Buffer for snappy transitions
+    const preloadedAudio = useRef({});
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
 
@@ -90,7 +90,6 @@ const Scriptread = () => {
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
-    // Preloader to kill the gaps between lines
     const preloadNext = async (index) => {
         if (index >= segments.length || preloadedAudio.current[index]) return;
         const seg = segments[index];
@@ -109,15 +108,13 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // Use preloaded audio if available, otherwise fetch live
             let buffer = preloadedAudio.current[index] || await fetchAudio(seg.text, voice);
-            delete preloadedAudio.current[index]; // Clean up memory
+            delete preloadedAudio.current[index]; 
 
             if (!isPlayingRef.current) return;
 
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
-            // Snappier pacing: Increase playback rate slightly
             source.playbackRate.value = 1.05; 
             source.connect(audioContext.current.destination);
             
@@ -129,7 +126,6 @@ const Scriptread = () => {
             activeSource.current = source;
             source.start();
 
-            // While this one is playing, preload the NEXT TWO lines
             preloadNext(index + 1);
             preloadNext(index + 2);
 
@@ -193,7 +189,7 @@ const Scriptread = () => {
         setVoiceMap(newVoiceMap);
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
-        preloadedAudio.current = {}; // Reset preload buffer on new script
+        preloadedAudio.current = {}; 
     };
 
     const masterAndExport = async () => {
@@ -274,7 +270,11 @@ const Scriptread = () => {
                         <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <div className="flex justify-between items-center mb-2">
                                 <p className="text-[10px] font-black uppercase text-gray-400">Narrator</p>
-                                <button onClick={() => { if (audioContext.current.state === 'suspended') audioContext.current.resume(); fetchAudio(`Auditioning.`, voiceMap.Narrator).then(b => { const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); }); }} className="text-[9px] font-black underline uppercase">Hear</button>
+                                <button onClick={async () => { 
+                                    if (audioContext.current.state === 'suspended') await audioContext.current.resume(); 
+                                    const b = await fetchAudio(`Hello, I'm auditioning for the narrator.`, voiceMap.Narrator); 
+                                    const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
+                                }} className="text-[9px] font-black underline uppercase">Hear</button>
                             </div>
                             <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 <VoiceListOptions />
@@ -284,7 +284,11 @@ const Scriptread = () => {
                             <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                                 <div className="flex justify-between items-center mb-2">
                                     <p className="text-[10px] font-black uppercase tracking-tight">{char}</p>
-                                    <button onClick={() => { if (audioContext.current.state === 'suspended') audioContext.current.resume(); fetchAudio(`Auditioning.`, voiceMap[char] || "Abby").then(b => { const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); }); }} className="text-[9px] font-black underline uppercase">Hear</button>
+                                    <button onClick={async () => { 
+                                        if (audioContext.current.state === 'suspended') await audioContext.current.resume(); 
+                                        const b = await fetchAudio(`Hello, I'm auditioning for the voice of ${char}.`, voiceMap[char] || "Abby"); 
+                                        const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
+                                    }} className="text-[9px] font-black underline uppercase">Hear</button>
                                 </div>
                                 <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <VoiceListOptions />
