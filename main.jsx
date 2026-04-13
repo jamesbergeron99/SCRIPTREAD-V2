@@ -57,49 +57,54 @@ const Scriptread = () => {
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
-    // GENDER DETECTION LOGIC
     const autoAssignVoice = (name) => {
-        const femaleNames = ["DEE", "ABBY", "AMINA", "BIANCA", "CHLOE", "CLAIRE", "DARLENE", "DEBORAH", "ELEANOR", "EVELYN", "HANA", "JESSICA", "SARAH", "VICTORIA", "MIA", "LUNA", "SOPHIE", "TESSA"];
+        const femaleNames = ["DEE", "D", "ABBY", "AMINA", "BIANCA", "CHLOE", "CLAIRE", "DARLENE", "DEBORAH", "ELEANOR", "EVELYN", "HANA", "JESSICA", "SARAH", "VICTORIA", "MIA", "LUNA", "SOPHIE", "TESSA"];
         const maleNames = ["FRANK", "ALEX", "BRANDON", "BRIAN", "CALLUM", "CARTER", "CEDRIC", "CLIVE", "CONRAD", "DAMON", "DENNIS", "DEREK", "ETHAN", "EVAN", "FELIX", "JAMES", "JASON", "SIMON", "VICTOR"];
         
         const upperName = name.toUpperCase();
-        if (femaleNames.some(n => upperName.includes(n))) {
+        if (femaleNames.some(n => upperName === n || upperName.includes(n))) {
             return INWORLD_VOICES.female[Math.floor(Math.random() * INWORLD_VOICES.female.length)].id;
         }
-        if (maleNames.some(n => upperName.includes(n))) {
+        if (maleNames.some(n => upperName === n || upperName.includes(n))) {
             return INWORLD_VOICES.male[Math.floor(Math.random() * INWORLD_VOICES.male.length)].id;
         }
-        // Default based on generic probability or fallback
         return "Abby"; 
     };
 
     const fetchAudio = async (text, voiceId) => {
-        // Phonetic Fixes
-        let cleanedText = text
+        // PHONETIC REPLACEMENTS
+        const cleanedText = text
             .replace(/\bDEE\b/g, "Dee")
             .replace(/\bsugar\b/gi, "shuger");
 
-        // Force "Bold" model for everyone to ensure emotion
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
-            headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
+            headers: { 
+                "Authorization": `Basic ${API_KEY}`, 
+                "Content-Type": "application/json" 
+            },
             body: JSON.stringify({ 
                 text: cleanedText, 
                 voiceId: voiceId || "Abby", 
-                modelId: "inworld-tts-1.5-bold" 
+                modelId: "inworld-tts-1.5-max" // Reverting to 'max' for stability, it still supports emotional range
             })
         });
+        
+        if (!response.ok) throw new Error("Audio fetch failed");
+        
         const data = await response.json();
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
     const previewVoice = async (vId, charName) => {
-        if (audioContext.current.state === 'suspended') audioContext.current.resume();
+        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
         try {
             const buffer = await fetchAudio(`Hello, I'm ${charName}.`, vId);
             const source = audioContext.current.createBufferSource();
-            source.buffer = buffer; source.connect(audioContext.current.destination); source.start();
-        } catch (e) {}
+            source.buffer = buffer; 
+            source.connect(audioContext.current.destination); 
+            source.start();
+        } catch (e) { console.error(e); }
     };
 
     const parseScript = (lines) => {
@@ -173,9 +178,15 @@ const Scriptread = () => {
             if (!isPlayingRef.current) return;
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer; source.connect(audioContext.current.destination);
-            source.onended = () => { setTotalSeconds(prev => prev + buffer.duration); if (isPlayingRef.current) playSegment(index + 1); };
+            source.onended = () => { 
+                setTotalSeconds(prev => prev + buffer.duration); 
+                if (isPlayingRef.current) playSegment(index + 1); 
+            };
             activeSource.current = source; source.start();
-        } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
+        } catch (e) { 
+            console.error(e);
+            if(isPlayingRef.current) playSegment(index + 1); 
+        }
     };
 
     const masterAndExport = async () => {
@@ -203,7 +214,7 @@ const Scriptread = () => {
             for (let i=0; i<dataArrArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArrArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
             const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
             link.download = "Scriptread_Master.wav"; link.click();
-        } catch (e) {}
+        } catch (e) { console.error(e); }
         setIsExporting(false);
     };
 
@@ -220,7 +231,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
                     <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">Trial over. Full read and export for $2.50.</p>
+                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">Full read and export for $2.50.</p>
                     <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
                 </div>
             )}
