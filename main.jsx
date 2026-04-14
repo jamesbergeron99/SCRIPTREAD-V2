@@ -15,7 +15,6 @@ const INWORLD_VOICES = {
     ]
 };
 
-// Reusable Logo Component
 const LogoIcon = ({ size = "32", color = "#2563eb" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -39,6 +38,9 @@ const Scriptread = () => {
     const activeSource = useRef(null);
     const isPlayingRef = useRef(false);
     const preloadedAudio = useRef({});
+    const scriptContainerRef = useRef(null); // Ref for the scrollable area
+    const segmentRefs = useRef([]); // Ref for individual lines
+    
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
     const PAGE_LIMIT = 120;
@@ -55,6 +57,16 @@ const Scriptread = () => {
     useEffect(() => {
         audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
     }, []);
+
+    // AUTO-SCROLL LOGIC: Whenever currentIdx changes, scroll to that element
+    useEffect(() => {
+        if (currentIdx !== -1 && segmentRefs.current[currentIdx]) {
+            segmentRefs.current[currentIdx].scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+            });
+        }
+    }, [currentIdx]);
 
     useEffect(() => {
         if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { 
@@ -105,23 +117,30 @@ const Scriptread = () => {
 
     const playSegment = async (index) => {
         if (!isPlayingRef.current || index >= segments.length || (!isUnlocked && totalSeconds >= TRIAL_LIMIT)) return;
-        setCurrentIdx(index);
+        
+        setCurrentIdx(index); // This triggers the highlight and scroll
+        
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
+        
         try {
             let buffer = preloadedAudio.current[index] || await fetchAudio(seg.text, voice);
             delete preloadedAudio.current[index]; 
             if (!isPlayingRef.current) return;
+
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.playbackRate.value = 1.05; 
             source.connect(audioContext.current.destination);
+            
             source.onended = () => { 
                 setTotalSeconds(prev => prev + (buffer.duration / 1.05)); 
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
+
             activeSource.current = source;
             source.start();
+
             preloadNext(index + 1);
             preloadNext(index + 2);
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
@@ -187,6 +206,7 @@ const Scriptread = () => {
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
         preloadedAudio.current = {}; 
+        setCurrentIdx(-1); // Reset index on new script
     };
 
     const masterAndExport = async () => {
@@ -263,7 +283,7 @@ const Scriptread = () => {
                                     const page = await pdf.getPage(i); const content = await page.getTextContent();
                                     content.items.forEach(item => lines.push({ text: item.str, x: item.transform[4] }));
                                 }
-                                parseScript(lines); setTotalSeconds(0); setCurrentIdx(-1);
+                                parseScript(lines); setTotalSeconds(0);
                             }; reader.readAsArrayBuffer(file);
                         }} />
                     </label>
@@ -273,7 +293,7 @@ const Scriptread = () => {
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col overflow-hidden shrink-0 shadow-inner">
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Production Cast</div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
                         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex justify-between items-center mb-2">
                                 <p className="text-[10px] font-black uppercase text-blue-600">Narrator</p>
@@ -305,10 +325,10 @@ const Scriptread = () => {
                     </div>
                 </aside>
 
-                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
-                    <div className="max-w-2xl mx-auto h-full flex flex-col justify-center">
+                <main ref={scriptContainerRef} className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 custom-scrollbar">
+                    <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
-                            <div className="text-center p-20 animate-fade-in">
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in">
                                 <div className="flex justify-center mb-10">
                                     <LogoIcon size="120" />
                                 </div>
@@ -321,9 +341,13 @@ const Scriptread = () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="space-y-6">
+                            <div className="space-y-6 pb-[50vh]">
                                 {segments.map((seg, i) => (
-                                    <div key={i} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10' : 'border-transparent opacity-40'}`}>
+                                    <div 
+                                        key={i} 
+                                        ref={el => segmentRefs.current[i] = el}
+                                        className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10 opacity-100' : 'border-transparent opacity-40'}`}
+                                    >
                                         {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
                                         <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
                                     </div>
@@ -339,7 +363,7 @@ const Scriptread = () => {
                 <button onClick={() => {
                     if (isPlaying) stopAudio();
                     else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); }
-                }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 transition-all shadow-xl">
+                }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
                     {isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}
                 </button>
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
