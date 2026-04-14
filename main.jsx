@@ -266,14 +266,28 @@ const Scriptread = () => {
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
                         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                            <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Narrator</p>
+                            <div className="flex justify-between items-center mb-2">
+                                <p className="text-[10px] font-black uppercase text-blue-600">Narrator</p>
+                                <button onClick={async () => { 
+                                    if (audioContext.current.state === 'suspended') await audioContext.current.resume(); 
+                                    const b = await fetchAudio(`Hello, I'm auditioning for the voice of the narrator.`, voiceMap.Narrator); 
+                                    const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
+                                }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-blue-600">Hear</button>
+                            </div>
                             <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 <VoiceListOptions />
                             </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="text-[10px] font-black uppercase text-gray-500">{char}</p>
+                                    <button onClick={async () => { 
+                                        if (audioContext.current.state === 'suspended') await audioContext.current.resume(); 
+                                        const b = await fetchAudio(`Hello, I'm auditioning for the voice of ${char}.`, voiceMap[char] || "Abby"); 
+                                        const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
+                                    }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-black">Hear</button>
+                                </div>
                                 <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <VoiceListOptions />
                                 </select>
