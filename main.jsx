@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 const INWORLD_VOICES = {
     narrators: [
         { id: "Serena", name: "Serena" },
+        { id: "Selene", name: "Selene" },
         { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
     ],
     female: [
@@ -17,7 +18,7 @@ const INWORLD_VOICES = {
 const Scriptread = () => {
     const [segments, setSegments] = useState([]);
     const [characters, setCharacters] = useState([]);
-    const [voiceMap, setVoiceMap] = useState({ Narrator: "Serena" }); // Serena is now the default
+    const [voiceMap, setVoiceMap] = useState({ Narrator: "Serena" });
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentIdx, setCurrentIdx] = useState(-1);
     const [isUnlocked, setIsUnlocked] = useState(false);
@@ -32,6 +33,7 @@ const Scriptread = () => {
     const preloadedAudio = useRef({});
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
+    const PAGE_LIMIT = 120; // Hard limit for protection
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -61,7 +63,6 @@ const Scriptread = () => {
     const autoAssignVoice = (name) => {
         const femaleNames = ["DEE", "D", "ABBY", "AMINA", "BIANCA", "CHLOE", "CLAIRE", "DARLENE", "DEBORAH", "ELEANOR", "EVELYN", "HANA", "JESSICA", "SARAH", "VICTORIA", "MIA", "LUNA", "SOPHIE", "TESSA"];
         const maleNames = ["FRANK", "ALEX", "BRANDON", "BRIAN", "CALLUM", "CARTER", "CEDRIC", "CLIVE", "CONRAD", "DAMON", "DENNIS", "DEREK", "ETHAN", "EVAN", "FELIX", "JAMES", "JASON", "SIMON", "VICTOR"];
-        
         const upperName = name.toUpperCase();
         if (femaleNames.some(n => upperName === n || upperName.includes(n))) {
             return INWORLD_VOICES.female[Math.floor(Math.random() * INWORLD_VOICES.female.length)].id;
@@ -73,20 +74,12 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        const cleanedText = text
-            .replace(/\bDEE\b/g, "Dee")
-            .replace(/\bsugar\b/gi, "shuger");
-
+        const cleanedText = text.replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger");
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-                text: cleanedText, 
-                voiceId: voiceId || "Abby", 
-                modelId: "inworld-tts-1.5-max" 
-            })
+            body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
         });
-        
         if (!response.ok) throw new Error("Audio fetch failed");
         const data = await response.json();
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
@@ -105,35 +98,25 @@ const Scriptread = () => {
     const playSegment = async (index) => {
         if (!isPlayingRef.current || index >= segments.length || (!isUnlocked && totalSeconds >= TRIAL_LIMIT)) return;
         setCurrentIdx(index);
-        
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-
         try {
             let buffer = preloadedAudio.current[index] || await fetchAudio(seg.text, voice);
             delete preloadedAudio.current[index]; 
-
             if (!isPlayingRef.current) return;
-
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.playbackRate.value = 1.05; 
             source.connect(audioContext.current.destination);
-            
             source.onended = () => { 
                 setTotalSeconds(prev => prev + (buffer.duration / 1.05)); 
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
-
             activeSource.current = source;
             source.start();
-
             preloadNext(index + 1);
             preloadNext(index + 2);
-
-        } catch (e) {
-            if(isPlayingRef.current) playSegment(index + 1); 
-        }
+        } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
     const parseScript = (lines) => {
@@ -141,7 +124,7 @@ const Scriptread = () => {
         const foundChars = new Set();
         let currentActionText = "";
         let hasHitFirstSlug = false;
-        let newVoiceMap = { Narrator: "Serena" }; // Ensuring Serena is default on re-parse
+        let newVoiceMap = { Narrator: "Serena" };
 
         const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
@@ -159,28 +142,20 @@ const Scriptread = () => {
         lines.forEach((line) => {
             let text = line.text.trim();
             if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
-            
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
-            
+            if (isSlug) hasHitFirstSlug = true;
             if (isSlug) {
-                hasHitFirstSlug = true;
                 flushAction();
-                const expandedSlug = text
-                    .replace(/\bINT\b\.?/gi, "Interior")
-                    .replace(/\bEXT\b\.?/gi, "Exterior")
-                    .replace(/\([^)]*\)/g, "").trim();
+                const expandedSlug = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").replace(/\([^)]*\)/g, "").trim();
                 finalBlocks.push({ type: 'narrator', text: expandedSlug });
                 return;
             }
-
             const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
-            
             if (!hasHitFirstSlug) {
                 const cleanIntro = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanIntro) finalBlocks.push({ type: 'narrator', text: cleanIntro });
                 return;
             }
-
             if (isTechnical) { 
                 flushAction(); 
                 finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); 
@@ -266,6 +241,11 @@ const Scriptread = () => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
+                                // PAGE LIMIT ENFORCEMENT
+                                if (pdf.numPages > PAGE_LIMIT) {
+                                    alert(`Scriptread Pro is for screenplays. Please limit uploads to ${PAGE_LIMIT} pages.`);
+                                    return;
+                                }
                                 let lines = [];
                                 for (let i = 1; i <= pdf.numPages; i++) {
                                     const page = await pdf.getPage(i); const content = await page.getTextContent();
