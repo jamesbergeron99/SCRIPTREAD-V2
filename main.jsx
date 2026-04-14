@@ -224,7 +224,7 @@ const Scriptread = () => {
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/90 backdrop-blur-md p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] max-w-xl">
                         <h2 className="text-5xl font-black uppercase italic mb-6 tracking-tighter">Purchase Table Read</h2>
-                        <p className="text-lg mb-10 uppercase italic text-gray-600 font-bold">Your 60-second preview is complete.</p>
+                        <p className="text-lg mb-10 uppercase italic text-gray-600 font-bold">Your preview is complete.</p>
                         <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="inline-block bg-black text-white px-12 py-6 font-black uppercase text-2xl hover:bg-gray-800 transition-all">Pay $2.50 via PayPal</a>
                     </div>
                 </div>
@@ -248,7 +248,7 @@ const Scriptread = () => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
-                                if (pdf.numPages > PAGE_LIMIT) { alert(`Scriptread Pro is limited to ${PAGE_LIMIT} pages.`); return; }
+                                if (pdf.numPages > PAGE_LIMIT) { alert(`Limit ${PAGE_LIMIT} pages.`); return; }
                                 let lines = [];
                                 for (let i = 1; i <= pdf.numPages; i++) {
                                     const page = await pdf.getPage(i); const content = await page.getTextContent();
@@ -264,7 +264,7 @@ const Scriptread = () => {
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col overflow-hidden shrink-0 shadow-inner">
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Production Cast</div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto p-5 space-y-4">
                         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex justify-between items-center mb-2">
                                 <p className="text-[10px] font-black uppercase text-blue-600">Narrator</p>
@@ -274,7 +274,7 @@ const Scriptread = () => {
                                     const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
                                 }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-blue-600">Hear</button>
                             </div>
-                            <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                            <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 <VoiceListOptions />
                             </select>
                         </div>
@@ -288,7 +288,7 @@ const Scriptread = () => {
                                         const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
                                     }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-black">Hear</button>
                                 </div>
-                                <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <VoiceListOptions />
                                 </select>
                             </div>
@@ -296,17 +296,12 @@ const Scriptread = () => {
                     </div>
                 </aside>
 
-                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 custom-scrollbar">
+                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
                     <div className="max-w-2xl mx-auto space-y-6">
-                        {segments.length === 0 && (
-                            <div className="h-64 border-4 border-dashed border-gray-300 rounded-3xl flex items-center justify-center text-gray-400 font-bold uppercase italic text-sm tracking-widest">
-                                Waiting for Script...
-                            </div>
-                        )}
                         {segments.map((seg, i) => (
                             <div key={i} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10' : 'border-transparent opacity-40'}`}>
                                 {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
-                                <p className="text-xl font-serif text-gray-800 leading-relaxed antialiased uppercase">{seg.text}</p>
+                                <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
                             </div>
                         ))}
                     </div>
@@ -318,7 +313,7 @@ const Scriptread = () => {
                 <button onClick={() => {
                     if (isPlaying) stopAudio();
                     else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); }
-                }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
+                }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 transition-all shadow-xl">
                     {isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}
                 </button>
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
