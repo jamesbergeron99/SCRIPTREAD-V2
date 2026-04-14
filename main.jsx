@@ -22,6 +22,12 @@ const LogoIcon = ({ size = "32", color = "#2563eb" }) => (
     </svg>
 );
 
+const MapleLeaf = ({ size = "16" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#FF0000" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L10.5 6.5L6 5L7.5 9.5L3 10.5L7.5 12.5L6 17.5L10.5 16L12 22L13.5 16L18 17.5L16.5 12.5L21 10.5L16.5 9.5L18 5L13.5 6.5L12 2Z" />
+    </svg>
+);
+
 const Scriptread = () => {
     const [segments, setSegments] = useState([]);
     const [characters, setCharacters] = useState([]);
@@ -82,13 +88,8 @@ const Scriptread = () => {
     const autoAssignVoice = (name) => {
         const femaleNames = ["DEE", "D", "ABBY", "AMINA", "BIANCA", "CHLOE", "CLAIRE", "DARLENE", "DEBORAH", "ELEANOR", "EVELYN", "HANA", "JESSICA", "SARAH", "VICTORIA", "MIA", "LUNA", "SOPHIE", "TESSA"];
         const maleNames = ["FRANK", "ALEX", "BRANDON", "BRIAN", "CALLUM", "CARTER", "CEDRIC", "CLIVE", "CONRAD", "DAMON", "DENNIS", "DEREK", "ETHAN", "EVAN", "FELIX", "JAMES", "JASON", "SIMON", "VICTOR"];
-        const upperName = name.toUpperCase();
-        if (femaleNames.some(n => upperName === n || upperName.includes(n))) {
-            return INWORLD_VOICES.female[Math.floor(Math.random() * INWORLD_VOICES.female.length)].id;
-        }
-        if (maleNames.some(n => upperName === n || upperName.includes(n))) {
-            return INWORLD_VOICES.male[Math.floor(Math.random() * INWORLD_VOICES.male.length)].id;
-        }
+        if (femaleNames.some(n => name.toUpperCase().includes(n))) return INWORLD_VOICES.female[Math.floor(Math.random() * INWORLD_VOICES.female.length)].id;
+        if (maleNames.some(n => name.toUpperCase().includes(n))) return INWORLD_VOICES.male[Math.floor(Math.random() * INWORLD_VOICES.male.length)].id;
         return "Abby"; 
     };
 
@@ -151,7 +152,6 @@ const Scriptread = () => {
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
-                // ENHANCED PAGE NUMBER FILTER: Standalone numbers, numbers with dots, and "Page X" patterns
                 const isPageNumber = /^(\d+|Page \d+|\d+\.)$/i.test(txt);
                 if (txt && !isPageNumber && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
@@ -162,9 +162,7 @@ const Scriptread = () => {
 
         lines.forEach((line) => {
             let text = line.text.trim();
-            // Immediate drop for clear page markers
             if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text) || systemJunk.test(text)) return;
-            
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             if (isSlug) {
                 hasHitFirstSlug = true;
@@ -262,7 +260,12 @@ const Scriptread = () => {
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shadow-sm shrink-0 z-50">
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
-                    <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
+                            <MapleLeaf size="20" />
+                        </div>
+                    </div>
                     {!isUnlocked && (
                         <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">
                             Preview: {Math.round(totalSeconds)}s / 60s
