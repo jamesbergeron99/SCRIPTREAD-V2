@@ -333,7 +333,7 @@ const Scriptread = () => {
                                     <LogoIcon size="120" />
                                 </div>
                                 <h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
-                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional sounding read-throughs for less than a cup of coffee.</p>
+                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional-sounding read-throughs for less than a cup of coffee.</p>
                                 <div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]">
                                     <div className="h-px w-8 bg-gray-300"></div>
                                     Load a PDF to begin
