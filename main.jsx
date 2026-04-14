@@ -232,6 +232,7 @@ const Scriptread = () => {
             
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shadow-sm shrink-0 z-50">
                 <div className="flex items-center gap-6">
+                    <img src="https://i.ibb.co/VvW3Dms/image-2af899.png" alt="Logo" className="h-12 w-auto" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
                     {!isUnlocked && (
                         <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full">
@@ -298,12 +299,21 @@ const Scriptread = () => {
 
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
                     <div className="max-w-2xl mx-auto space-y-6">
-                        {segments.map((seg, i) => (
-                            <div key={i} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10' : 'border-transparent opacity-40'}`}>
-                                {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
-                                <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
+                        {segments.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-20 opacity-60">
+                                <img src="https://i.ibb.co/VvW3Dms/image-2af899.png" alt="Logo" className="h-32 w-auto mb-8 grayscale opacity-20" />
+                                <h2 className="text-4xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
+                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight">Create professional sounding read-throughs for less than a cup of coffee.</p>
+                                <p className="mt-8 text-sm font-bold uppercase text-gray-400 border-2 border-gray-300 border-dashed px-6 py-4 rounded-xl">Load a PDF script to begin</p>
                             </div>
-                        ))}
+                        ) : (
+                            segments.map((seg, i) => (
+                                <div key={i} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10' : 'border-transparent opacity-40'}`}>
+                                    {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
+                                    <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </main>
             </div>
