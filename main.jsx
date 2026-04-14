@@ -38,8 +38,8 @@ const Scriptread = () => {
     const activeSource = useRef(null);
     const isPlayingRef = useRef(false);
     const preloadedAudio = useRef({});
-    const scriptContainerRef = useRef(null); // Ref for the scrollable area
-    const segmentRefs = useRef([]); // Ref for individual lines
+    const scriptContainerRef = useRef(null);
+    const segmentRefs = useRef([]);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
@@ -58,7 +58,6 @@ const Scriptread = () => {
         audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
     }, []);
 
-    // AUTO-SCROLL LOGIC: Whenever currentIdx changes, scroll to that element
     useEffect(() => {
         if (currentIdx !== -1 && segmentRefs.current[currentIdx]) {
             segmentRefs.current[currentIdx].scrollIntoView({
@@ -117,30 +116,23 @@ const Scriptread = () => {
 
     const playSegment = async (index) => {
         if (!isPlayingRef.current || index >= segments.length || (!isUnlocked && totalSeconds >= TRIAL_LIMIT)) return;
-        
-        setCurrentIdx(index); // This triggers the highlight and scroll
-        
+        setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-        
         try {
             let buffer = preloadedAudio.current[index] || await fetchAudio(seg.text, voice);
             delete preloadedAudio.current[index]; 
             if (!isPlayingRef.current) return;
-
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.playbackRate.value = 1.05; 
             source.connect(audioContext.current.destination);
-            
             source.onended = () => { 
                 setTotalSeconds(prev => prev + (buffer.duration / 1.05)); 
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
-
             activeSource.current = source;
             source.start();
-
             preloadNext(index + 1);
             preloadNext(index + 2);
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
@@ -170,8 +162,8 @@ const Scriptread = () => {
             let text = line.text.trim();
             if (!text || (/^\d+$/.test(text) && !narratorTechnical.test(text)) || systemJunk.test(text)) return;
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
-            if (isSlug) hasHitFirstSlug = true;
             if (isSlug) {
+                hasHitFirstSlug = true;
                 flushAction();
                 const expandedSlug = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").replace(/\([^)]*\)/g, "").trim();
                 finalBlocks.push({ type: 'narrator', text: expandedSlug });
@@ -206,7 +198,7 @@ const Scriptread = () => {
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
         preloadedAudio.current = {}; 
-        setCurrentIdx(-1); // Reset index on new script
+        setCurrentIdx(-1);
     };
 
     const masterAndExport = async () => {
