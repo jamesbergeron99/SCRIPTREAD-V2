@@ -22,13 +22,6 @@ const LogoIcon = ({ size = "32", color = "#2563eb" }) => (
     </svg>
 );
 
-const TrueMapleLeaf = ({ size = "24" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="#FF0000" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12.0001 22C12.0001 22 11.4556 18.9912 11.2378 17.6834C11.129 17.0296 11.129 16.4851 11.3468 15.9406C11.5646 15.3961 12.0001 15.0694 12.0001 15.0694C12.0001 15.0694 12.4356 15.3961 12.6534 15.9406C12.8711 16.4851 12.8711 17.0296 12.7623 17.6834C12.5446 18.9912 12.0001 22 12.0001 22Z" fill="#FF0000"/>
-        <path d="M22 10.7412L19.8222 11.8306L20.2578 9.6528L18.0799 8.56337L18.951 6.38558L16.7733 7.47501L15.9022 5.29722L13.7244 6.38665L12.0001 2.00003L10.2757 6.38665L8.09793 5.29722L7.22682 7.47501L5.04903 6.38558L5.92014 8.56337L3.74235 9.6528L4.17789 11.8306L2.0001 10.7412L3.74235 12.919L3.30681 15.0968L5.48459 13.0074L6.3557 15.1852L8.53349 14.0957L9.4046 16.2735L11.5824 15.1841L12.0001 19.5707L12.4177 15.1841L14.5955 16.2735L15.4666 14.0957L17.6444 15.1852L18.5155 13.0074L20.6933 15.0968L20.2578 12.919L22 10.7412Z" fill="#FF0000"/>
-    </svg>
-);
-
 const Scriptread = () => {
     const [segments, setSegments] = useState([]);
     const [characters, setCharacters] = useState([]);
@@ -146,7 +139,6 @@ const Scriptread = () => {
         let currentActionText = "";
         let hasHitFirstSlug = false;
         let newVoiceMap = { Narrator: "Serena" };
-
         const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
 
@@ -166,8 +158,7 @@ const Scriptread = () => {
             if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text) || systemJunk.test(text)) return;
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             if (isSlug) {
-                hasHitFirstSlug = true;
-                flushAction();
+                hasHitFirstSlug = true; flushAction();
                 const expandedSlug = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").replace(/\([^)]*\)/g, "").trim();
                 finalBlocks.push({ type: 'narrator', text: expandedSlug });
                 return;
@@ -179,8 +170,7 @@ const Scriptread = () => {
                 return;
             }
             if (isTechnical) { 
-                flushAction(); 
-                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); 
+                flushAction(); finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); 
             } else if (line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isTechnical) { 
                 flushAction(); 
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
@@ -197,11 +187,9 @@ const Scriptread = () => {
             }
         });
         flushAction();
-        setVoiceMap(newVoiceMap);
-        setCharacters([...foundChars].sort());
+        setVoiceMap(newVoiceMap); setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
-        preloadedAudio.current = {}; 
-        setCurrentIdx(-1);
+        preloadedAudio.current = {}; setCurrentIdx(-1);
     };
 
     const masterAndExport = async () => {
@@ -246,9 +234,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
-                        <div className="flex justify-center mb-6">
-                           <LogoIcon size="64" />
-                        </div>
+                        <div className="flex justify-center mb-6"><LogoIcon size="64" /></div>
                         <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Thank you for listening</h2>
                         <p className="text-lg mb-4 text-gray-700 font-medium">We hope you're enjoying your table read so far.</p>
                         <p className="text-sm mb-10 text-gray-500 leading-relaxed uppercase tracking-tight font-bold">Please consider a small contribution of $2.50 to help us cover the costs of these high-fidelity voices and unlock the full script plus WAV export. We truly appreciate your support.</p>
@@ -261,24 +247,12 @@ const Scriptread = () => {
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shadow-sm shrink-0 z-50">
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
-                    <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                            <TrueMapleLeaf size="22" />
-                            <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
-                        </div>
-                    </div>
-                    {!isUnlocked && (
-                        <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">
-                            Preview: {Math.round(totalSeconds)}s / 60s
-                        </div>
-                    )}
+                    <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
+                    {!isUnlocked && <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">Preview: {Math.round(totalSeconds)}s / 60s</div>}
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full tracking-wider transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
-                        {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
-                    </button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">
-                        Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full tracking-wider transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
+                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
@@ -302,29 +276,17 @@ const Scriptread = () => {
                         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex justify-between items-center mb-2">
                                 <p className="text-[10px] font-black uppercase text-blue-600">Narrator</p>
-                                <button onClick={async () => { 
-                                    if (audioContext.current.state === 'suspended') await audioContext.current.resume(); 
-                                    const b = await fetchAudio(`Hello, I'm auditioning for the voice of the narrator.`, voiceMap.Narrator); 
-                                    const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
-                                }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-blue-600">Hear</button>
+                                <button onClick={async () => { if (audioContext.current.state === 'suspended') await audioContext.current.resume(); const b = await fetchAudio(`Hello, I'm auditioning for the voice of the narrator.`, voiceMap.Narrator); const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-blue-600">Hear</button>
                             </div>
-                            <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                <VoiceListOptions />
-                            </select>
+                            <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                                 <div className="flex justify-between items-center mb-2">
                                     <p className="text-[10px] font-black uppercase text-gray-500">{char}</p>
-                                    <button onClick={async () => { 
-                                        if (audioContext.current.state === 'suspended') await audioContext.current.resume(); 
-                                        const b = await fetchAudio(`Hello, I'm auditioning for the voice of ${char}.`, voiceMap[char] || "Abby"); 
-                                        const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
-                                    }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-black">Hear</button>
+                                    <button onClick={async () => { if (audioContext.current.state === 'suspended') await audioContext.current.resume(); const b = await fetchAudio(`Hello, I'm auditioning for the voice of ${char}.`, voiceMap[char] || "Abby"); const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-black">Hear</button>
                                 </div>
-                                <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    <VoiceListOptions />
-                                </select>
+                                <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
                     </div>
@@ -334,25 +296,15 @@ const Scriptread = () => {
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in">
-                                <div className="flex justify-center mb-10">
-                                    <LogoIcon size="120" />
-                                </div>
+                                <div className="flex justify-center mb-10"><LogoIcon size="120" /></div>
                                 <h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
                                 <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional-sounding read-throughs for less than a cup of coffee.</p>
-                                <div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]">
-                                    <div className="h-px w-8 bg-gray-300"></div>
-                                    Load a PDF to begin
-                                    <div className="h-px w-8 bg-gray-300"></div>
-                                </div>
+                                <div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]"><div className="h-px w-8 bg-gray-300"></div>Load a PDF to begin<div className="h-px w-8 bg-gray-300"></div></div>
                             </div>
                         ) : (
                             <div className="space-y-6 pb-[50vh]">
                                 {segments.map((seg, i) => (
-                                    <div 
-                                        key={i} 
-                                        ref={el => segmentRefs.current[i] = el}
-                                        className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 rounded-xl ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10 opacity-100' : 'border-transparent opacity-40'}`}
-                                    >
+                                    <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 rounded-xl ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10 opacity-100' : 'border-transparent opacity-40'}`}>
                                         {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
                                         <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
                                     </div>
