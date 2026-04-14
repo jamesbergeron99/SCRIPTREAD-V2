@@ -33,6 +33,7 @@ const Scriptread = () => {
     const [showPaywall, setShowPaywall] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
+    const [hasGreeted, setHasGreeted] = useState(false);
 
     const audioContext = useRef(null);
     const activeSource = useRef(null);
@@ -60,19 +61,29 @@ const Scriptread = () => {
 
     useEffect(() => {
         if (currentIdx !== -1 && segmentRefs.current[currentIdx]) {
-            segmentRefs.current[currentIdx].scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-            });
+            segmentRefs.current[currentIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }, [currentIdx]);
 
     useEffect(() => {
-        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { 
-            stopAudio(); 
-            setShowPaywall(true); 
-        }
+        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); }
     }, [totalSeconds, isUnlocked]);
+
+    // NEW GREETING LOGIC: Play on first interaction if no script is loaded
+    const handleFirstInteraction = async () => {
+        if (!hasGreeted && segments.length === 0) {
+            if (audioContext.current.state === 'suspended') await audioContext.current.resume();
+            setHasGreeted(true);
+            const greetingText = "Welcome to Scriptread Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
+            try {
+                const buffer = await fetchAudio(greetingText, "Serena");
+                const source = audioContext.current.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.current.destination);
+                source.start();
+            } catch (e) { console.error("Greeting failed", e); }
+        }
+    };
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
@@ -141,55 +152,29 @@ const Scriptread = () => {
         let newVoiceMap = { Narrator: "Serena" };
         const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
-
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
                 const isPageNumber = /^(\d+|Page \d+|\d+\.)$/i.test(txt);
-                if (txt && !isPageNumber && !systemJunk.test(txt)) {
-                    finalBlocks.push({ type: 'narrator', text: txt });
-                }
+                if (txt && !isPageNumber && !systemJunk.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
                 currentActionText = ""; 
             } 
         };
-
         lines.forEach((line) => {
             let text = line.text.trim();
             if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text) || systemJunk.test(text)) return;
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
-            if (isSlug) {
-                hasHitFirstSlug = true; flushAction();
-                const expandedSlug = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").replace(/\([^)]*\)/g, "").trim();
-                finalBlocks.push({ type: 'narrator', text: expandedSlug });
-                return;
-            }
+            if (isSlug) { hasHitFirstSlug = true; flushAction(); const expandedSlug = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").replace(/\([^)]*\)/g, "").trim(); finalBlocks.push({ type: 'narrator', text: expandedSlug }); return; }
             const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
-            if (!hasHitFirstSlug) {
-                const cleanIntro = text.replace(/\([^)]*\)/g, "").trim();
-                if (cleanIntro && !/^(\d+|Page \d+|\d+\.)$/i.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro });
-                return;
-            }
-            if (isTechnical) { 
-                flushAction(); finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); 
-            } else if (line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isTechnical) { 
-                flushAction(); 
-                const cleanName = text.replace(/\([^)]*\)/g, "").trim();
-                if (cleanName && !/^\d+$/.test(cleanName)) {
-                    foundChars.add(cleanName); 
-                    if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = autoAssignVoice(cleanName);
-                    finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); 
-                }
+            if (!hasHitFirstSlug) { const cleanIntro = text.replace(/\([^)]*\)/g, "").trim(); if (cleanIntro && !/^(\d+|Page \d+|\d+\.)$/i.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro }); return; }
+            if (isTechnical) { flushAction(); finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); } 
+            else if (line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isTechnical) { 
+                flushAction(); const cleanName = text.replace(/\([^)]*\)/g, "").trim(); if (cleanName && !/^\d+$/.test(cleanName)) { foundChars.add(cleanName); if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = autoAssignVoice(cleanName); finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); }
             } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
-                if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
-            } else { 
-                currentActionText += " " + text; 
-            }
+                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim(); if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
+            } else { currentActionText += " " + text; }
         });
-        flushAction();
-        setVoiceMap(newVoiceMap); setCharacters([...foundChars].sort());
-        setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
-        preloadedAudio.current = {}; setCurrentIdx(-1);
+        flushAction(); setVoiceMap(newVoiceMap); setCharacters([...foundChars].sort()); setSegments(finalBlocks.filter(b => b.text.trim().length > 0)); preloadedAudio.current = {}; setCurrentIdx(-1);
     };
 
     const masterAndExport = async () => {
@@ -199,10 +184,8 @@ const Scriptread = () => {
         try {
             for (let i = 0; i < segments.length; i++) {
                 setExportProgress(Math.round((i / segments.length) * 100));
-                const seg = segments[i];
-                const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-                const buffer = await fetchAudio(seg.text, voice);
-                buffers.push(buffer);
+                const seg = segments[i]; const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
+                const buffer = await fetchAudio(seg.text, voice); buffers.push(buffer);
             }
             const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
             const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
@@ -215,8 +198,7 @@ const Scriptread = () => {
             view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
             const dataArrArr = masterBuffer.getChannelData(0); let off = 44;
             for (let i=0; i<dataArrArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArrArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
-            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
-            link.download = "Scriptread_Master.wav"; link.click();
+            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' })); link.download = "Scriptread_Master.wav"; link.click();
         } catch (e) {}
         setIsExporting(false);
     };
@@ -230,7 +212,7 @@ const Scriptread = () => {
     );
 
     return (
-        <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
+        <div onClick={handleFirstInteraction} className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
