@@ -15,6 +15,14 @@ const INWORLD_VOICES = {
     ]
 };
 
+// Reusable Logo Component
+const LogoIcon = ({ size = "32", color = "#2563eb" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M7 11.5C7.5 12.5 8.5 13.5 10 14M14 14C15.5 13.5 16.5 12.5 17 11.5" stroke={color} strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+);
+
 const Scriptread = () => {
     const [segments, setSegments] = useState([]);
     const [characters, setCharacters] = useState([]);
@@ -232,15 +240,10 @@ const Scriptread = () => {
             
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shadow-sm shrink-0 z-50">
                 <div className="flex items-center gap-4">
-                    <div className="bg-blue-600 p-2 rounded-lg flex items-center justify-center">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M7 10C7.5 11.5 8.5 12.5 10 13M14 13C15.5 12.5 16.5 11.5 17 10" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
-                    </div>
+                    <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
                     {!isUnlocked && (
-                        <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full">
+                        <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">
                             Preview: {Math.round(totalSeconds)}s / 60s
                         </div>
                     )}
@@ -280,7 +283,7 @@ const Scriptread = () => {
                                     const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
                                 }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-blue-600">Hear</button>
                             </div>
-                            <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                            <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 <VoiceListOptions />
                             </select>
                         </div>
@@ -294,7 +297,7 @@ const Scriptread = () => {
                                         const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
                                     }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-black">Hear</button>
                                 </div>
-                                <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <VoiceListOptions />
                                 </select>
                             </div>
@@ -303,30 +306,29 @@ const Scriptread = () => {
                 </aside>
 
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
-                    <div className="max-w-2xl mx-auto space-y-6">
+                    <div className="max-w-2xl mx-auto h-full flex flex-col justify-center">
                         {segments.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center p-20">
-                                <div className="bg-blue-600 p-6 rounded-3xl mb-10 shadow-2xl">
-                                    <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                        <path d="M7 10C7.5 11.5 8.5 12.5 10 13M14 13C15.5 12.5 16.5 11.5 17 10" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                                    </svg>
+                            <div className="text-center p-20 animate-fade-in">
+                                <div className="flex justify-center mb-10">
+                                    <LogoIcon size="120" />
                                 </div>
-                                <h2 className="text-4xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
+                                <h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
                                 <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional sounding read-throughs for less than a cup of coffee.</p>
-                                <div className="animate-pulse flex items-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]">
+                                <div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]">
                                     <div className="h-px w-8 bg-gray-300"></div>
                                     Load a PDF to begin
                                     <div className="h-px w-8 bg-gray-300"></div>
                                 </div>
                             </div>
                         ) : (
-                            segments.map((seg, i) => (
-                                <div key={i} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10' : 'border-transparent opacity-40'}`}>
-                                    {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
-                                    <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
-                                </div>
-                            ))
+                            <div className="space-y-6">
+                                {segments.map((seg, i) => (
+                                    <div key={i} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10' : 'border-transparent opacity-40'}`}>
+                                        {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
+                                        <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 </main>
