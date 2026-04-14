@@ -231,8 +231,13 @@ const Scriptread = () => {
             )}
             
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shadow-sm shrink-0 z-50">
-                <div className="flex items-center gap-6">
-                    <img src="https://i.ibb.co/VvW3Dms/image-2af899.png" alt="Logo" className="h-12 w-auto" />
+                <div className="flex items-center gap-4">
+                    <div className="bg-blue-600 p-2 rounded-lg flex items-center justify-center">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M7 10C7.5 11.5 8.5 12.5 10 13M14 13C15.5 12.5 16.5 11.5 17 10" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
+                    </div>
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
                     {!isUnlocked && (
                         <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full">
@@ -300,11 +305,20 @@ const Scriptread = () => {
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
                     <div className="max-w-2xl mx-auto space-y-6">
                         {segments.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center p-20 opacity-60">
-                                <img src="https://i.ibb.co/VvW3Dms/image-2af899.png" alt="Logo" className="h-32 w-auto mb-8 grayscale opacity-20" />
+                            <div className="h-full flex flex-col items-center justify-center text-center p-20">
+                                <div className="bg-blue-600 p-6 rounded-3xl mb-10 shadow-2xl">
+                                    <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        <path d="M7 10C7.5 11.5 8.5 12.5 10 13M14 13C15.5 12.5 16.5 11.5 17 10" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                    </svg>
+                                </div>
                                 <h2 className="text-4xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
-                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight">Create professional sounding read-throughs for less than a cup of coffee.</p>
-                                <p className="mt-8 text-sm font-bold uppercase text-gray-400 border-2 border-gray-300 border-dashed px-6 py-4 rounded-xl">Load a PDF script to begin</p>
+                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional sounding read-throughs for less than a cup of coffee.</p>
+                                <div className="animate-pulse flex items-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]">
+                                    <div className="h-px w-8 bg-gray-300"></div>
+                                    Load a PDF to begin
+                                    <div className="h-px w-8 bg-gray-300"></div>
+                                </div>
                             </div>
                         ) : (
                             segments.map((seg, i) => (
