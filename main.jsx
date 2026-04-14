@@ -69,12 +69,12 @@ const Scriptread = () => {
         if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); }
     }, [totalSeconds, isUnlocked]);
 
-    // NEW GREETING LOGIC: Play on first interaction if no script is loaded
+    // PHONETIC FIX: Using "reed" instead of "read" in the hidden audio string
     const handleFirstInteraction = async () => {
         if (!hasGreeted && segments.length === 0) {
             if (audioContext.current.state === 'suspended') await audioContext.current.resume();
             setHasGreeted(true);
-            const greetingText = "Welcome to Scriptread Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
+            const greetingText = "Welcome to Script reed Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
             try {
                 const buffer = await fetchAudio(greetingText, "Serena");
                 const source = audioContext.current.createBufferSource();
@@ -99,7 +99,8 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        const cleanedText = text.replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger");
+        // Cleaning logic for "DEE" and "sugar", added brand phonetic correction here too
+        const cleanedText = text.replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger").replace(/\bScriptread\b/gi, "Script-reed");
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
