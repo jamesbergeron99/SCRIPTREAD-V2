@@ -241,11 +241,16 @@ const Scriptread = () => {
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
-                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/90 backdrop-blur-md p-10 text-center">
-                    <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] max-w-xl">
-                        <h2 className="text-5xl font-black uppercase italic mb-6 tracking-tighter">Purchase Table Read</h2>
-                        <p className="text-lg mb-10 uppercase italic text-gray-600 font-bold">Your preview is complete.</p>
-                        <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="inline-block bg-black text-white px-12 py-6 font-black uppercase text-2xl hover:bg-gray-800 transition-all">Pay $2.50 via PayPal</a>
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
+                    <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
+                        <div className="flex justify-center mb-6">
+                           <LogoIcon size="64" />
+                        </div>
+                        <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Thank you for listening</h2>
+                        <p className="text-lg mb-4 text-gray-700 font-medium">We hope you're enjoying your table read so far.</p>
+                        <p className="text-sm mb-10 text-gray-500 leading-relaxed uppercase tracking-tight font-bold">Please consider a small contribution of $2.50 to help us cover the costs of these high-fidelity voices and unlock the full script plus WAV export. We truly appreciate your support.</p>
+                        <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="inline-block bg-blue-600 text-white px-12 py-6 font-black uppercase text-xl rounded-full hover:bg-blue-700 transition-all shadow-xl hover:scale-105 active:scale-95">Support Scriptread Pro</a>
+                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors">Maybe Later</button>
                     </div>
                 </div>
             )}
@@ -261,10 +266,10 @@ const Scriptread = () => {
                     )}
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase tracking-wider transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full tracking-wider transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
                         {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
                     </button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs cursor-pointer hover:bg-gray-800 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)]">
+                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">
                         Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
@@ -338,7 +343,7 @@ const Scriptread = () => {
                                     <div 
                                         key={i} 
                                         ref={el => segmentRefs.current[i] = el}
-                                        className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10 opacity-100' : 'border-transparent opacity-40'}`}
+                                        className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 rounded-xl ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10 opacity-100' : 'border-transparent opacity-40'}`}
                                     >
                                         {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
                                         <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
