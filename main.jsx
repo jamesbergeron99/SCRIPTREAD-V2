@@ -82,7 +82,6 @@ const Scriptread = () => {
     const autoAssignVoice = (name) => {
         const femaleNames = ["DEE", "D", "ABBY", "AMINA", "BIANCA", "CHLOE", "CLAIRE", "DARLENE", "DEBORAH", "ELEANOR", "EVELYN", "HANA", "JESSICA", "SARAH", "VICTORIA", "MIA", "LUNA", "SOPHIE", "TESSA"];
         const maleNames = ["FRANK", "ALEX", "BRANDON", "BRIAN", "CALLUM", "CARTER", "CEDRIC", "CLIVE", "CONRAD", "DAMON", "DENNIS", "DEREK", "ETHAN", "EVAN", "FELIX", "JAMES", "JASON", "SIMON", "VICTOR"];
-        
         const upperName = name.toUpperCase();
         if (femaleNames.some(n => upperName === n || upperName.includes(n))) {
             return INWORLD_VOICES.female[Math.floor(Math.random() * INWORLD_VOICES.female.length)].id;
@@ -152,8 +151,8 @@ const Scriptread = () => {
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
-                // PAGE NUMBER FILTER: Ignore standalone digits or common page header patterns
-                const isPageNumber = /^\d+$/.test(txt) || /^PAGE \d+$/i.test(txt);
+                // ENHANCED PAGE NUMBER FILTER: Standalone numbers, numbers with dots, and "Page X" patterns
+                const isPageNumber = /^(\d+|Page \d+|\d+\.)$/i.test(txt);
                 if (txt && !isPageNumber && !systemJunk.test(txt)) {
                     finalBlocks.push({ type: 'narrator', text: txt });
                 }
@@ -163,8 +162,8 @@ const Scriptread = () => {
 
         lines.forEach((line) => {
             let text = line.text.trim();
-            // Immediate drop for standalone page numbers
-            if (!text || /^\d+$/.test(text) || systemJunk.test(text)) return;
+            // Immediate drop for clear page markers
+            if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text) || systemJunk.test(text)) return;
             
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
             if (isSlug) {
@@ -177,7 +176,7 @@ const Scriptread = () => {
             const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
             if (!hasHitFirstSlug) {
                 const cleanIntro = text.replace(/\([^)]*\)/g, "").trim();
-                if (cleanIntro && !/^\d+$/.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro });
+                if (cleanIntro && !/^(\d+|Page \d+|\d+\.)$/i.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro });
                 return;
             }
             if (isTechnical) { 
