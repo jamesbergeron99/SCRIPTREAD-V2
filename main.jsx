@@ -33,7 +33,7 @@ const Scriptread = () => {
     const preloadedAudio = useRef({});
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
-    const PAGE_LIMIT = 120; // Hard limit for protection
+    const PAGE_LIMIT = 120;
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -219,33 +219,36 @@ const Scriptread = () => {
     );
 
     return (
-        <div className="flex flex-col h-screen w-screen bg-white text-black font-mono overflow-hidden fixed inset-0">
+        <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
-                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white border-[16px] border-black p-10 text-center">
-                    <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Purchase Full Table Read</h2>
-                    <p className="text-sm mb-10 max-w-md uppercase italic text-gray-600 leading-tight tracking-tight">Full read and export for $2.50.</p>
-                    <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-black text-white px-12 py-6 font-black uppercase text-xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:invert transition-all">Pay $2.50 via PayPal</a>
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/90 backdrop-blur-md p-10 text-center">
+                    <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] max-w-xl">
+                        <h2 className="text-5xl font-black uppercase italic mb-6 tracking-tighter">Purchase Table Read</h2>
+                        <p className="text-lg mb-10 uppercase italic text-gray-600 font-bold">Your 60-second preview is complete.</p>
+                        <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="inline-block bg-black text-white px-12 py-6 font-black uppercase text-2xl hover:bg-gray-800 transition-all">Pay $2.50 via PayPal</a>
+                    </div>
                 </div>
             )}
-            <header className="h-24 border-b-8 border-black px-8 flex justify-between items-center bg-white shrink-0 z-50">
-                <div className="flex items-center gap-8">
-                    <h1 className="text-3xl font-black uppercase italic tracking-tighter">Scriptread</h1>
-                    {!isUnlocked && <div className="bg-yellow-400 border-4 border-black px-4 py-1 text-xs font-black uppercase italic">Trial: {Math.round(totalSeconds)}s / 60s</div>}
+            
+            <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shadow-sm shrink-0 z-50">
+                <div className="flex items-center gap-6">
+                    <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
+                    {!isUnlocked && (
+                        <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full">
+                            Preview: {Math.round(totalSeconds)}s / 60s
+                        </div>
+                    )}
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-[4px] border-black font-black text-[11px] hover:bg-black hover:text-white transition-all uppercase italic ${isUnlocked ? 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50'}`}>
-                        {isExporting ? `Exporting ${exportProgress}%` : "Master & Export Wav"}
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase tracking-wider transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
+                        {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
                     </button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs cursor-pointer border-4 border-black hover:invert transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs cursor-pointer hover:bg-gray-800 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)]">
                         Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
-                                // PAGE LIMIT ENFORCEMENT
-                                if (pdf.numPages > PAGE_LIMIT) {
-                                    alert(`Scriptread Pro is for screenplays. Please limit uploads to ${PAGE_LIMIT} pages.`);
-                                    return;
-                                }
+                                if (pdf.numPages > PAGE_LIMIT) { alert(`Scriptread Pro is limited to ${PAGE_LIMIT} pages.`); return; }
                                 let lines = [];
                                 for (let i = 1; i <= pdf.numPages; i++) {
                                     const page = await pdf.getPage(i); const content = await page.getTextContent();
@@ -257,60 +260,54 @@ const Scriptread = () => {
                     </label>
                 </div>
             </header>
+
             <div className="flex-1 flex overflow-hidden">
-                <aside className="w-80 border-r-8 border-black bg-gray-50 flex flex-col overflow-hidden shrink-0">
-                    <div className="p-4 bg-black text-white font-black uppercase text-center italic tracking-widest text-sm">Cast List</div>
-                    <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                        <div className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <div className="flex justify-between items-center mb-2">
-                                <p className="text-[10px] font-black uppercase text-gray-400">Narrator</p>
-                                <button onClick={async () => { 
-                                    if (audioContext.current.state === 'suspended') await audioContext.current.resume(); 
-                                    const b = await fetchAudio(`Hello, I'm auditioning for the narrator.`, voiceMap.Narrator); 
-                                    const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
-                                }} className="text-[9px] font-black underline uppercase">Hear</button>
-                            </div>
-                            <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col overflow-hidden shrink-0 shadow-inner">
+                    <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Production Cast</div>
+                    <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+                        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Narrator</p>
+                            <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 <VoiceListOptions />
                             </select>
                         </div>
                         {characters.map(char => (
-                            <div key={char} className="border-4 border-black p-4 bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                                <div className="flex justify-between items-center mb-2">
-                                    <p className="text-[10px] font-black uppercase tracking-tight">{char}</p>
-                                    <button onClick={async () => { 
-                                        if (audioContext.current.state === 'suspended') await audioContext.current.resume(); 
-                                        const b = await fetchAudio(`Hello, I'm auditioning for the voice of ${char}.`, voiceMap[char] || "Abby"); 
-                                        const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); 
-                                    }} className="text-[9px] font-black underline uppercase">Hear</button>
-                                </div>
-                                <select className="w-full border-2 border-black p-2 font-bold text-xs bg-white outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                            <div key={char} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
+                                <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <VoiceListOptions />
                                 </select>
                             </div>
                         ))}
                     </div>
                 </aside>
-                <main className="flex-1 overflow-y-auto bg-white p-16 custom-scrollbar">
-                    <div className="max-w-3xl mx-auto">
+
+                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 custom-scrollbar">
+                    <div className="max-w-2xl mx-auto space-y-6">
+                        {segments.length === 0 && (
+                            <div className="h-64 border-4 border-dashed border-gray-300 rounded-3xl flex items-center justify-center text-gray-400 font-bold uppercase italic text-sm tracking-widest">
+                                Waiting for Script...
+                            </div>
+                        )}
                         {segments.map((seg, i) => (
-                            <div key={i} className={`p-10 border-4 mb-10 transition-all duration-300 ${currentIdx === i ? 'bg-black text-white scale-[1.02] shadow-[15px_15px_0px_0px_rgba(0,0,0,1)]' : 'border-black opacity-20'}`}>
-                                {seg.type === 'dialogue' && <p className="text-xs font-black uppercase mb-3 italic tracking-widest">{seg.character}</p>}
-                                <p className="text-xl font-bold uppercase leading-tight tracking-tight">{seg.text}</p>
+                            <div key={i} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10' : 'border-transparent opacity-40'}`}>
+                                {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
+                                <p className="text-xl font-serif text-gray-800 leading-relaxed antialiased uppercase">{seg.text}</p>
                             </div>
                         ))}
                     </div>
                 </main>
             </div>
-            <footer className="h-32 border-t-8 border-black bg-white flex justify-center items-center gap-20 shrink-0 z-50">
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-125 transition-transform"><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg></button>
+
+            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m11 17-5-5 5-5m7 10-5-5 5-5"/></svg></button>
                 <button onClick={() => {
                     if (isPlaying) stopAudio();
                     else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); }
-                }} className="bg-black text-white p-8 rounded-full shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)] active:translate-y-1 transition-all">
-                    {isPlaying ? <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
+                }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
+                    {isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}
                 </button>
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }}><svg width="48" height="48" viewBox="0 0 24 24" fill="black"><polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/></svg></button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
             </footer>
         </div>
     );
