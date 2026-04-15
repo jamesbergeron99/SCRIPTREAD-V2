@@ -7,6 +7,11 @@ const INWORLD_VOICES = {
         { id: "Selene", name: "Selene" },
         { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
     ],
+    custom: [
+        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-1289100c", name: "Custom Voice 1" },
+        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-30af450b", name: "Custom Voice 2" },
+        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-045a5de4", name: "Custom Voice 3" }
+    ],
     female: [
         { id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Anjali", name: "Anjali" }, { id: "Ashley", name: "Ashley" }, { id: "Bianca", name: "Bianca" }, { id: "Celeste", name: "Celeste" }, { id: "Chloe", name: "Chloe" }, { id: "Claire", name: "Claire" }, { id: "Darlene", name: "Darlene" }, { id: "Deborah", name: "Deborah" }, { id: "Eleanor", name: "Eleanor" }, { id: "Evelyn", name: "Evelyn" }, { id: "Hana", name: "Hana" }, { id: "Jessica", name: "Jessica" }, { id: "Kelsey", name: "Kelsey" }, { id: "Lauren", name: "Lauren" }, { id: "Leda", name: "Leda" }, { id: "Loretta", name: "Loretta" }, { id: "Luna", name: "Luna" }, { id: "Marlene", name: "Marlene" }, { id: "Mia", name: "Mia" }, { id: "Miranda", name: "Miranda" }, { id: "Nadia", name: "Nadia" }, { id: "Naomi", name: "Naomi" }, { id: "Olivia", name: "Olivia" }, { id: "Pippa", name: "Pippa" }, { id: "Pixie", name: "Pixie" }, { id: "Riley", name: "Riley" }, { id: "Saanvi", name: "Saanvi" }, { id: "Sarah", name: "Sarah" }, { id: "Serena", name: "Serena" }, { id: "Sophie", name: "Sophie" }, { id: "Tessa", name: "Tessa" }, { id: "Veronica", name: "Veronica" }, { id: "Victoria", name: "Victoria" }
     ],
@@ -69,7 +74,6 @@ const Scriptread = () => {
         if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); }
     }, [totalSeconds, isUnlocked]);
 
-    // PHONETIC FIX: Using "reed" instead of "read" in the hidden audio string
     const handleFirstInteraction = async () => {
         if (!hasGreeted && segments.length === 0) {
             if (audioContext.current.state === 'suspended') await audioContext.current.resume();
@@ -99,7 +103,6 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        // Cleaning logic for "DEE" and "sugar", added brand phonetic correction here too
         const cleanedText = text.replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger").replace(/\bScriptread\b/gi, "Script-reed");
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
@@ -207,6 +210,7 @@ const Scriptread = () => {
     const VoiceListOptions = () => (
         <>
             <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Custom Cast">{INWORLD_VOICES.custom.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
             <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
             <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
         </>
