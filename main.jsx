@@ -8,9 +8,9 @@ const INWORLD_VOICES = {
         { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
     ],
     custom: [
-        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-1289100c", name: "Custom Voice 1" },
-        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-30af450b", name: "Custom Voice 2" },
-        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-045a5de4", name: "Custom Voice 3" }
+        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-1289100c", name: "Daneeka" },
+        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-30af450b", name: "Zack" },
+        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-045a5de4", name: "Oleg" }
     ],
     female: [
         { id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Anjali", name: "Anjali" }, { id: "Ashley", name: "Ashley" }, { id: "Bianca", name: "Bianca" }, { id: "Celeste", name: "Celeste" }, { id: "Chloe", name: "Chloe" }, { id: "Claire", name: "Claire" }, { id: "Darlene", name: "Darlene" }, { id: "Deborah", name: "Deborah" }, { id: "Eleanor", name: "Eleanor" }, { id: "Evelyn", name: "Evelyn" }, { id: "Hana", name: "Hana" }, { id: "Jessica", name: "Jessica" }, { id: "Kelsey", name: "Kelsey" }, { id: "Lauren", name: "Lauren" }, { id: "Leda", name: "Leda" }, { id: "Loretta", name: "Loretta" }, { id: "Luna", name: "Luna" }, { id: "Marlene", name: "Marlene" }, { id: "Mia", name: "Mia" }, { id: "Miranda", name: "Miranda" }, { id: "Nadia", name: "Nadia" }, { id: "Naomi", name: "Naomi" }, { id: "Olivia", name: "Olivia" }, { id: "Pippa", name: "Pippa" }, { id: "Pixie", name: "Pixie" }, { id: "Riley", name: "Riley" }, { id: "Saanvi", name: "Saanvi" }, { id: "Sarah", name: "Sarah" }, { id: "Serena", name: "Serena" }, { id: "Sophie", name: "Sophie" }, { id: "Tessa", name: "Tessa" }, { id: "Veronica", name: "Veronica" }, { id: "Victoria", name: "Victoria" }
