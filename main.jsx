@@ -47,7 +47,7 @@ const Scriptread = () => {
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
-    const nextAudioBuffer = useRef(null);
+    const prefetchBuffer = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -81,23 +81,6 @@ const Scriptread = () => {
         }
     }, [totalSeconds, isUnlocked, isBetaUser]);
 
-    const fetchAudio = async (text, voiceId) => {
-        const cleanedText = text
-            .replace(/\bEXT\b\.?/gi, "Exterior")
-            .replace(/\bINT\b\.?/gi, "Interior")
-            .replace(/\bDEE\b/g, "Dee")
-            .replace(/\bsugar\b/gi, "shuger")
-            .replace(/\bScriptread\b/gi, "Script-reed");
-
-        const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
-            method: "POST",
-            headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
-        });
-        const data = await response.json();
-        return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
-    };
-
     const handleFirstInteraction = async () => {
         if (hasGreetedRef.current) return;
         hasGreetedRef.current = true;
@@ -114,8 +97,25 @@ const Scriptread = () => {
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
-        nextAudioBuffer.current = null;
+        prefetchBuffer.current = null;
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
+    };
+
+    const fetchAudio = async (text, voiceId) => {
+        const cleanedText = text
+            .replace(/\bEXT\b\.?/gi, "Exterior")
+            .replace(/\bINT\b\.?/gi, "Interior")
+            .replace(/\bDEE\b/g, "Dee")
+            .replace(/\bsugar\b/gi, "shuger")
+            .replace(/\bScriptread\b/gi, "Script-reed");
+
+        const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
+            method: "POST",
+            headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
+        });
+        const data = await response.json();
+        return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
     const auditionVoice = async (voiceId, charName) => {
@@ -140,21 +140,28 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            let buffer = nextAudioBuffer.current || await fetchAudio(seg.text, voice);
-            nextAudioBuffer.current = null; 
+            // SPEED FIX: Use the prefetched buffer if available for zero lag
+            let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
+            prefetchBuffer.current = null; 
+
             if (!isPlayingRef.current) return;
+
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
+            
+            // PRELOAD NEXT BLOCK IMMEDIATELY
             if (index + 1 < segments.length) {
                 const nxtSeg = segments[index + 1];
                 const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
                 fetchAudio(nxtSeg.text, nxtVoice).then(b => { prefetchBuffer.current = b; });
             }
+
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
+
             activeSource.current = source;
             source.start();
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
@@ -173,8 +180,8 @@ const Scriptread = () => {
             }
         };
 
-        const maleHints = ["man", "boy", "he", "him", "his", "guy", "husband", "father", "son"];
-        const femaleHints = ["woman", "girl", "she", "her", "hers", "lady", "wife", "mother", "daughter", "trans girl"];
+        const maleHints = ["man", "boy", "he", "him", "his", "guy", "husband", "father", "son", "male"];
+        const femaleHints = ["woman", "girl", "she", "her", "hers", "lady", "wife", "mother", "daughter", "female", "trans girl", "catgirl"];
 
         lines.forEach((line, i) => {
             let text = line.text.trim();
@@ -183,35 +190,32 @@ const Scriptread = () => {
 
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
             const xPos = line.x || 0;
-            
-            // 1. CHARACTER NAMES (Centered approx 180-330)
+            const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
+
             if (isAllUpper && xPos > 180 && xPos < 330 && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
                     if (!newVoiceMap[cleanName]) {
-                        const context = lines.slice(i + 1, i + 6).map(l => l.text.toLowerCase()).join(" ");
+                        const context = lines.slice(i - 2, i + 8).map(l => l.text.toLowerCase()).join(" ");
                         let gender = 'female';
-                        if (maleHints.some(t => context.includes(t))) gender = 'male';
-                        else if (femaleHints.some(t => context.includes(t))) gender = 'female';
+                        if (maleHints.some(h => context.includes(h)) && !femaleHints.some(h => context.includes(h))) gender = 'male';
+                        else if (femaleHints.some(h => context.includes(h))) gender = 'female';
                         const pool = INWORLD_VOICES[gender];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
                     }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
-            // 2. DIALOGUE TEXT (Pushed in from left, approx 120-400)
             else if (xPos > 120 && xPos < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            // 3. SLUGLINES & INDIVIDUAL BREAKS (Usually far left < 120 or distinct patterns)
-            else if (text.startsWith("INT") || text.startsWith("EXT") || text.includes("Written by") || text.includes("@") || text.includes("FADE")) {
+            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE")) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
-            // 4. ACTION DESCRIPTION GATHERING
             else {
                 actionBuffer += (actionBuffer ? " " : "") + text;
             }
@@ -284,7 +288,7 @@ const Scriptread = () => {
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
-                    <label onClick={handleFirstInteraction} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
