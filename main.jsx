@@ -48,7 +48,6 @@ const Scriptread = () => {
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
     const prefetchBuffer = useRef(null);
-    const nextTimeoutRef = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -64,9 +63,9 @@ const Scriptread = () => {
             window.history.replaceState({}, document.title, window.location.pathname);
         }
         
-        const handleWelcome = () => handleFirstInteraction();
-        window.addEventListener('mousedown', handleWelcome);
-        return () => window.removeEventListener('mousedown', handleWelcome);
+        const handleInteraction = () => handleFirstInteraction();
+        window.addEventListener('mousedown', handleInteraction);
+        return () => window.removeEventListener('mousedown', handleInteraction);
     }, []);
 
     useEffect(() => {
@@ -103,7 +102,6 @@ const Scriptread = () => {
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
         prefetchBuffer.current = null;
-        if (nextTimeoutRef.current) clearTimeout(nextTimeoutRef.current);
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
@@ -146,7 +144,13 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // Use preloaded buffer or fetch fresh
+            // IMMEDIATE START: Prepare the next block before playing this one
+            if (index + 1 < segments.length) {
+                const nxtSeg = segments[index + 1];
+                const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
+                fetchAudio(nxtSeg.text, nxtVoice).then(b => { prefetchBuffer.current = b; });
+            }
+
             let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
             prefetchBuffer.current = null; 
 
@@ -156,26 +160,13 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // Start preloading the NEXT line immediately
-            if (index + 1 < segments.length) {
-                const nxtSeg = segments[index + 1];
-                const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
-                fetchAudio(nxtSeg.text, nxtVoice).then(b => { prefetchBuffer.current = b; });
-            }
-
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
+                if (isPlayingRef.current) playSegment(index + 1); 
             };
 
             activeSource.current = source;
             source.start();
-
-            // PUNCHY FLOW TRIGGER: Overlap the end by 300ms to hide the engine gap
-            const durationMs = (buffer.duration * 1000) - 300;
-            nextTimeoutRef.current = setTimeout(() => {
-                if (isPlayingRef.current) playSegment(index + 1);
-            }, Math.max(0, durationMs));
-
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
