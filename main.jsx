@@ -63,10 +63,9 @@ const Scriptread = () => {
             window.history.replaceState({}, document.title, window.location.pathname);
         }
         
-        // GLOBAL WELCOME TRIGGER
-        const handleWelcome = () => handleFirstInteraction();
-        window.addEventListener('mousedown', handleWelcome);
-        return () => window.removeEventListener('mousedown', handleWelcome);
+        const firstClick = () => handleFirstInteraction();
+        window.addEventListener('mousedown', firstClick);
+        return () => window.removeEventListener('mousedown', firstClick);
     }, []);
 
     useEffect(() => {
@@ -147,24 +146,19 @@ const Scriptread = () => {
         try {
             let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
             prefetchBuffer.current = null; 
-
             if (!isPlayingRef.current) return;
-
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
-            
             if (index + 1 < segments.length) {
                 const nxtSeg = segments[index + 1];
                 const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
                 fetchAudio(nxtSeg.text, nxtVoice).then(b => { prefetchBuffer.current = b; });
             }
-
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
-
             activeSource.current = source;
             source.start();
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
@@ -183,8 +177,8 @@ const Scriptread = () => {
             }
         };
 
-        const femaleTerms = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "princess", "queen", "ms", "mrs", "miss"];
-        const maleTerms = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "prince", "king", "mr"];
+        const femaleMarkers = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "ms", "mrs", "miss"];
+        const maleMarkers = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "mr"];
 
         lines.forEach((line, i) => {
             let text = line.text.trim();
@@ -195,38 +189,39 @@ const Scriptread = () => {
             const xPos = line.x || 0;
             const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
 
+            // CHARACTER BLOCK - AUTO CASTING
             if (isAllUpper && xPos > 180 && xPos < 330 && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
                     if (!newVoiceMap[cleanName]) {
-                        // AGGRESSIVE AUTO-CAST SCANNER
-                        const scannerRange = lines.slice(Math.max(0, i - 5), i + 15).map(l => l.text.toLowerCase()).join(" ");
-                        let score = 0; // Negative for Male, Positive for Female
-                        
-                        femaleTerms.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score += 2; });
-                        maleTerms.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score -= 2; });
-                        
-                        // Name specific overrides
-                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 10;
-                        if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 10;
+                        // Scan context specifically for this new character
+                        const context = lines.slice(Math.max(0, i - 2), i + 15).map(l => l.text.toLowerCase()).join(" ");
+                        let score = 0;
+                        femaleMarkers.forEach(m => { if (context.includes(m)) score += 3; });
+                        maleMarkers.forEach(m => { if (context.includes(m)) score -= 3; });
+                        // Hard overrides
+                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 20;
+                        if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 20;
 
-                        const gender = score >= 0 ? 'female' : 'male';
-                        const pool = INWORLD_VOICES[gender];
+                        const pool = INWORLD_VOICES[score >= 0 ? 'female' : 'male'];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
                     }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
+            // Banter/Dialogue text
             else if (xPos > 120 && xPos < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
+            // Header/Transition/Titles (Separate boxes)
             else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.length < 35) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
+            // Action description (Stitch boxes)
             else {
                 actionBuffer += (actionBuffer ? " " : "") + text;
             }
@@ -287,7 +282,7 @@ const Scriptread = () => {
                         <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Thank you for listening</h2>
                         <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold leading-relaxed">Please consider a small contribution of $2.50 to help us cover voice costs and unlock the full script plus WAV export. We truly appreciate your support.</p>
                         <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="inline-block bg-blue-600 text-white px-12 py-6 font-black uppercase text-xl rounded-full shadow-xl hover:scale-105 active:scale-95">Support Scriptread Pro</a>
-                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black">Maybe Later</button>
+                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors">Maybe Later</button>
                     </div>
                 </div>
             )}
@@ -299,7 +294,7 @@ const Scriptread = () => {
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
@@ -319,12 +314,12 @@ const Scriptread = () => {
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
                         <div className="p-4 bg-gray-50 rounded-xl border">
-                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                             <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                                 <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
