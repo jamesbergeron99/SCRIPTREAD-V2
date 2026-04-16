@@ -40,6 +40,7 @@ const Scriptread = () => {
     const [showPaywall, setShowPaywall] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
+    const [hasGreeted, setHasGreeted] = useState(false);
     const [isBetaUser, setIsBetaUser] = useState(false);
 
     const audioContext = useRef(null);
@@ -77,6 +78,21 @@ const Scriptread = () => {
             setShowPaywall(true); 
         }
     }, [totalSeconds, isUnlocked, isBetaUser]);
+
+    const handleFirstInteraction = async () => {
+        if (!hasGreeted && segments.length === 0) {
+            if (audioContext.current.state === 'suspended') await audioContext.current.resume();
+            setHasGreeted(true);
+            const greetingText = "Welcome to Script reed Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
+            try {
+                const buffer = await fetchAudio(greetingText, "Serena");
+                const source = audioContext.current.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.current.destination);
+                source.start();
+            } catch (e) { console.error("Greeting failed", e); }
+        }
+    };
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
@@ -128,12 +144,9 @@ const Scriptread = () => {
 
         lines.forEach((line) => {
             let text = line.text.trim();
-            
-            // 1. IGNORE Page Numbers and Parentheses
             if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text)) return;
             if (text.startsWith("(") && text.endsWith(")")) return;
 
-            // 2. CHARACTER NAME DETECTION
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
             const isCharacterPos = line.x > 180 && line.x < 330;
             const isShortName = text.length < 25; 
@@ -146,12 +159,10 @@ const Scriptread = () => {
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
-            // 3. DIALOGUE TEXT: If the previous block was dialogue and we are in dialogue margins
             else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
-            // 4. EVERY LINE IS A NEW BLOCK (Narrator reading everything else individually)
             else {
                 finalBlocks.push({ type: 'narrator', text: text });
             }
@@ -210,7 +221,7 @@ const Scriptread = () => {
     );
 
     return (
-        <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
+        <div onClick={handleFirstInteraction} className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
@@ -273,13 +284,24 @@ const Scriptread = () => {
                     </div>
                 </aside>
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
-                    <div className="max-w-2xl mx-auto">
-                        {segments.map((seg, i) => (
-                            <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100' : 'border-transparent opacity-40'}`}>
-                                {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600">{seg.character}</p>}
-                                <p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p>
+                    <div className="max-w-2xl mx-auto min-h-full flex flex-col">
+                        {segments.length === 0 ? (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in">
+                                <LogoIcon size="120" />
+                                <h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
+                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional-sounding read-throughs for less than a cup of coffee.</p>
+                                <div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]"><div className="h-px w-8 bg-gray-300"></div>Load a PDF to begin<div className="h-px w-8 bg-gray-300"></div></div>
                             </div>
-                        ))}
+                        ) : (
+                            <div className="space-y-6 pb-[50vh]">
+                                {segments.map((seg, i) => (
+                                    <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100' : 'border-transparent opacity-40'}`}>
+                                        {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600">{seg.character}</p>}
+                                        <p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </main>
             </div>
