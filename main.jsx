@@ -16,7 +16,7 @@ const INWORLD_VOICES = {
         { id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Anjali", name: "Anjali" }, { id: "Ashley", name: "Ashley" }, { id: "Bianca", name: "Bianca" }, { id: "Celeste", name: "Celeste" }, { id: "Chloe", name: "Chloe" }, { id: "Claire", name: "Claire" }, { id: "Darlene", name: "Darlene" }, { id: "Deborah", name: "Deborah" }, { id: "Eleanor", name: "Eleanor" }, { id: "Evelyn", name: "Evelyn" }, { id: "Hana", name: "Hana" }, { id: "Jessica", name: "Jessica" }, { id: "Kelsey", name: "Kelsey" }, { id: "Lauren", name: "Lauren" }, { id: "Leda", name: "Leda" }, { id: "Loretta", name: "Loretta" }, { id: "Luna", name: "Luna" }, { id: "Marlene", name: "Marlene" }, { id: "Mia", name: "Mia" }, { id: "Miranda", name: "Miranda" }, { id: "Nadia", name: "Nadia" }, { id: "Naomi", name: "Naomi" }, { id: "Olivia", name: "Olivia" }, { id: "Pippa", name: "Pippa" }, { id: "Pixie", name: "Pixie" }, { id: "Riley", name: "Riley" }, { id: "Saanvi", name: "Saanvi" }, { id: "Sarah", name: "Sarah" }, { id: "Serena", name: "Serena" }, { id: "Sophie", name: "Sophie" }, { id: "Tessa", name: "Tessa" }, { id: "Veronica", name: "Veronica" }, { id: "Victoria", name: "Victoria" }
     ],
     male: [
-        { id: "Alex", name: "Alex" }, { id: "Arjun", name: "Arjun" }, { id: "Avery", name: "Avery" }, { id: "Blake", name: "Blake" }, { id: "Brandon", name: "Brandon" }, { id: "Brian", name: "Brian" }, { id: "Callum", name: "Callum" }, { id: "Carter", name: "Carter" }, { id: "Cedric", name: "Cedric" }, { id: "Clive", name: "Clive" }, { id: "Conrad", name: "Conrad" }, { id: "Damon", name: "Damon" }, { id: "Dennis", name: "Dennis" }, { id: "Derek", name: "Derek" }, { id: "Dominus", name: "Dominus" }, { id: "Duncan", name: "Duncan" }, { id: "Edward", name: "Edward" }, { id: "Elliot", name: "Elliot" }, { id: "Ethan", name: "Ethan" }, { id: "Evan", name: "Evan" }, { id: "Felix", name: "Felix" }, { id: "Gareth", name: "Gareth" }, { id: "Graham", name: "Graham" }, { id: "Hamish", name: "Hamish" }, { id: "Hank", name: "Hank" }, { id: "James", name: "James" }, { id: "Jason", name: "Jason" }, { id: "Jonah", name: "Jonah" }, { id: "Levi", name: "Levi" }, { id: "Liam", name: "Liam" }, { id: "Lucian", name: "Lucian" }, { id: "Malcolm", name: "Malcolm" }, { id: "Marcus", name: "Marcus" }, { id: "Mark", name: "Mark" }, { id: "Nate", name: "Nate" }, { id: "Oliver", name: "Oliver" }, { id: "Reed", name: "Reed" }, { id: "Rupert", name: "Rupert" }, { id: "Sebastian", name: "Sebastian" }, { id: "Simon", name: "Simon" }, { id: "Timothy", name: "Timothy" }, { id: "Trevor", name: "Trevor" }, { id: "Tristan", name: "Tristan" }, { id: "Tyler", name: "Tyler" }, { id: "Victor", name: "Victor" }, { id: "Vinny", name: "Vinny" }
+        { id: "Alex", name: "Alex" }, { id: "Arjun", name: "Arjun" }, { id: "Avery", name: "Avery" }, { id: "Blake", name: "Blake" }, { id: "Brandon", name: "Brandon" }, { id: "Brian", name: "Brian" }, { id: "Callum", name: "Callum" }, { id: "Carter", name: "Carter" }, { id: "Cedric", name: "Cedric" }, { id: "Clive", name: "Clive" }, { id: "Conrad", name: "Conrad" }, { id: "Damon", name: "Damon" }, { id: "Dennis", name: "Dennis" }, { id: "Derek", name: "Derek" }, { id: "Dominus", name: "Dominus" }, { id: "Duncan", name: "Duncan" }, { id: "Edward", name: "Edward" }, { id: "Elliott", name: "Elliott" }, { id: "Ethan", name: "Ethan" }, { id: "Evan", name: "Evan" }, { id: "Felix", name: "Felix" }, { id: "Gareth", name: "Gareth" }, { id: "Graham", name: "Graham" }, { id: "Hamish", name: "Hamish" }, { id: "Hank", name: "Hank" }, { id: "James", name: "James" }, { id: "Jason", name: "Jason" }, { id: "Jonah", name: "Jonah" }, { id: "Levi", name: "Levi" }, { id: "Liam", name: "Liam" }, { id: "Lucian", name: "Lucian" }, { id: "Malcolm", name: "Malcolm" }, { id: "Marcus", name: "Marcus" }, { id: "Mark", name: "Mark" }, { id: "Nate", name: "Nate" }, { id: "Oliver", name: "Oliver" }, { id: "Reed", name: "Reed" }, { id: "Rupert", name: "Rupert" }, { id: "Sebastian", name: "Sebastian" }, { id: "Simon", name: "Simon" }, { id: "Timothy", name: "Timothy" }, { id: "Trevor", name: "Trevor" }, { id: "Tristan", name: "Tristan" }, { id: "Tyler", name: "Tyler" }, { id: "Victor", name: "Victor" }, { id: "Vinny", name: "Vinny" }
     ]
 };
 
@@ -114,24 +114,13 @@ const Scriptread = () => {
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
-    const preloadNext = async (index) => {
-        if (index >= segments.length || preloadedAudio.current[index]) return;
-        const seg = segments[index];
-        const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-        try {
-            const buffer = await fetchAudio(seg.text, voice);
-            preloadedAudio.current[index] = buffer;
-        } catch (e) {}
-    };
-
     const playSegment = async (index) => {
         if (!isPlayingRef.current || index >= segments.length || (!isUnlocked && totalSeconds >= TRIAL_LIMIT)) return;
         setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
         try {
-            let buffer = preloadedAudio.current[index] || await fetchAudio(seg.text, voice);
-            delete preloadedAudio.current[index]; 
+            let buffer = await fetchAudio(seg.text, voice);
             if (!isPlayingRef.current) return;
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
@@ -143,8 +132,6 @@ const Scriptread = () => {
             };
             activeSource.current = source;
             source.start();
-            preloadNext(index + 1);
-            preloadNext(index + 2);
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
@@ -154,31 +141,58 @@ const Scriptread = () => {
         let currentActionText = "";
         let hasHitFirstSlug = false;
         let newVoiceMap = { Narrator: "Serena" };
-        const narratorTechnical = /^(ACT|FADE|CUT|DISSOLVE|EPISODE|TITLE|WRITTEN|BY|END\sACT|END\sOF|COLD\sOPEN|CANDYLAND|PART)/i;
+
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
+        const slugKeywords = ["INT", "EXT", "DAY", "NIGHT", "AFTERNOON", "MORNING", "EVENING", "LIVING", "ROOM", "KITCHEN", "HALLWAY", "OFFICE", "STREET"];
+
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
-                const isPageNumber = /^(\d+|Page \d+|\d+\.)$/i.test(txt);
-                if (txt && !isPageNumber && !systemJunk.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
+                if (txt && !/^(\d+|Page \d+)$/i.test(txt)) {
+                    finalBlocks.push({ type: 'narrator', text: txt });
+                }
                 currentActionText = ""; 
             } 
         };
+
         lines.forEach((line) => {
             let text = line.text.trim();
-            if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text) || systemJunk.test(text)) return;
-            const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("Interior") || text.startsWith("Exterior");
-            if (isSlug) { hasHitFirstSlug = true; flushAction(); const expandedSlug = text.replace(/\bINT\b\.?/gi, "Interior").replace(/\bEXT\b\.?/gi, "Exterior").replace(/\([^)]*\)/g, "").trim(); finalBlocks.push({ type: 'narrator', text: expandedSlug }); return; }
-            const isTechnical = narratorTechnical.test(text) || (text.startsWith('"') && text.endsWith('"'));
-            if (!hasHitFirstSlug) { const cleanIntro = text.replace(/\([^)]*\)/g, "").trim(); if (cleanIntro && !/^(\d+|Page \d+|\d+\.)$/i.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro }); return; }
-            if (isTechnical) { flushAction(); finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); } 
-            else if (line.x > 180 && text === text.toUpperCase() && /[A-Z]/.test(text) && !text.includes('"') && !isTechnical) { 
-                flushAction(); const cleanName = text.replace(/\([^)]*\)/g, "").trim(); if (cleanName && !/^\d+$/.test(cleanName)) { foundChars.add(cleanName); if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = autoAssignVoice(cleanName); finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); }
-            } else if (line.x > 120 && line.x < 350 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim(); if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
-            } else { currentActionText += " " + text; }
+            if (!text || text.length < 2 || systemJunk.test(text)) return;
+            const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.includes(" - ") || slugKeywords.some(k => text.includes(k + "."));
+            if (isSlug) {
+                hasHitFirstSlug = true;
+                flushAction();
+                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() });
+                return;
+            }
+            if (!hasHitFirstSlug) {
+                const cleanIntro = text.replace(/\([^)]*\)/g, "").trim();
+                if (cleanIntro && !/^\d+$/.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro });
+                return;
+            }
+            const isAllUpper = text === text.toUpperCase();
+            const containsSlugWord = slugKeywords.some(word => text.includes(word));
+            const looksLikeCharacter = line.x > 180 && line.x < 330 && isAllUpper && !containsSlugWord && !text.startsWith("(");
+            if (looksLikeCharacter) { 
+                flushAction(); 
+                const cleanName = text.replace(/\([^)]*\)/g, "").trim();
+                if (cleanName && !/^\d+$/.test(cleanName)) {
+                    foundChars.add(cleanName); 
+                    if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = autoAssignVoice(cleanName);
+                    finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); 
+                }
+            } else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
+                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
+                if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
+            } else { 
+                currentActionText += " " + text; 
+            }
         });
-        flushAction(); setVoiceMap(newVoiceMap); setCharacters([...foundChars].sort()); setSegments(finalBlocks.filter(b => b.text.trim().length > 0)); preloadedAudio.current = {}; setCurrentIdx(-1);
+        flushAction();
+        setVoiceMap(newVoiceMap);
+        setCharacters([...foundChars].sort());
+        setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
+        setCurrentIdx(-1);
     };
 
     const masterAndExport = async () => {
@@ -230,68 +244,57 @@ const Scriptread = () => {
                     </div>
                 </div>
             )}
-            
-            <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shadow-sm shrink-0 z-50">
+            <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shrink-0 z-50">
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
                     {!isUnlocked && <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">Preview: {Math.round(totalSeconds)}s / 60s</div>}
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full tracking-wider transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
+                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
-                                if (pdf.numPages > PAGE_LIMIT) { alert(`Limit ${PAGE_LIMIT} pages.`); return; }
                                 let lines = [];
                                 for (let i = 1; i <= pdf.numPages; i++) {
                                     const page = await pdf.getPage(i); const content = await page.getTextContent();
                                     content.items.forEach(item => lines.push({ text: item.str, x: item.transform[4] }));
                                 }
-                                parseScript(lines); setTotalSeconds(0);
+                                parseScript(lines);
                             }; reader.readAsArrayBuffer(file);
                         }} />
                     </label>
                 </div>
             </header>
-
             <div className="flex-1 flex overflow-hidden">
-                <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col overflow-hidden shrink-0 shadow-inner">
-                    <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Production Cast</div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+                <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col overflow-hidden shrink-0">
+                    <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">Production Cast</div>
+                    <div className="flex-1 overflow-y-auto p-5 space-y-4">
                         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                            <div className="flex justify-between items-center mb-2">
-                                <p className="text-[10px] font-black uppercase text-blue-600">Narrator</p>
-                                <button onClick={async () => { if (audioContext.current.state === 'suspended') await audioContext.current.resume(); const b = await fetchAudio(`Hello, I'm auditioning for the voice of the narrator.`, voiceMap.Narrator); const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-blue-600">Hear</button>
-                            </div>
-                            <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
+                            <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Narrator</p>
+                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <div className="flex justify-between items-center mb-2">
-                                    <p className="text-[10px] font-black uppercase text-gray-500">{char}</p>
-                                    <button onClick={async () => { if (audioContext.current.state === 'suspended') await audioContext.current.resume(); const b = await fetchAudio(`Hello, I'm auditioning for the voice of ${char}.`, voiceMap[char] || "Abby"); const s = audioContext.current.createBufferSource(); s.buffer = b; s.connect(audioContext.current.destination); s.start(); }} className="text-[9px] font-black underline uppercase text-gray-400 hover:text-black">Hear</button>
-                                </div>
-                                <select className="w-full bg-white border border-gray-200 p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-500" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
+                                <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
+                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
                     </div>
                 </aside>
-
-                <main ref={scriptContainerRef} className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 custom-scrollbar">
+                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in">
-                                <div className="flex justify-center mb-10"><LogoIcon size="120" /></div>
+                                <LogoIcon size="120" />
                                 <h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
-                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional-sounding read-throughs for less than a cup of coffee.</p>
-                                <div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]"><div className="h-px w-8 bg-gray-300"></div>Load a PDF to begin<div className="h-px w-8 bg-gray-300"></div></div>
+                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight">Load a PDF to begin your table read.</p>
                             </div>
                         ) : (
                             <div className="space-y-6 pb-[50vh]">
                                 {segments.map((seg, i) => (
-                                    <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 rounded-xl ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl z-10 opacity-100' : 'border-transparent opacity-40'}`}>
+                                    <div key={i} className={`p-10 bg-white transition-all duration-500 shadow-sm border-l-4 rounded-xl ${currentIdx === i ? 'border-blue-600 scale-[1.03] shadow-2xl opacity-100' : 'border-transparent opacity-40'}`}>
                                         {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
                                         <p className="text-xl font-serif text-gray-800 leading-relaxed uppercase">{seg.text}</p>
                                     </div>
@@ -301,16 +304,10 @@ const Scriptread = () => {
                     </div>
                 </main>
             </div>
-
-            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m11 17-5-5 5-5m7 10-5-5 5-5"/></svg></button>
-                <button onClick={() => {
-                    if (isPlaying) stopAudio();
-                    else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); }
-                }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
+            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0">
+                <button onClick={() => { if (isPlaying) stopAudio(); else { isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
                     {isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}
                 </button>
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
             </footer>
         </div>
     );
