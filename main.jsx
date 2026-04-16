@@ -47,7 +47,7 @@ const Scriptread = () => {
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
-    const nextAudioBuffer = useRef(null); // The Preload Buffer
+    const nextAudioBuffer = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -144,9 +144,8 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // Use preloaded buffer if it exists, otherwise fetch fresh
             let buffer = nextAudioBuffer.current || await fetchAudio(seg.text, voice);
-            nextAudioBuffer.current = null; // Clear preloader
+            nextAudioBuffer.current = null;
             
             if (!isPlayingRef.current) return;
 
@@ -154,19 +153,17 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // PRELOAD LOGIC: Start fetching the NEXT line immediately while this one plays
+            // PRELOAD NEXT BLOCK IMMEDIATELY
             if (index + 1 < segments.length) {
                 const nextSeg = segments[index + 1];
                 const nextVoice = nextSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nextSeg.character] || "Abby");
-                fetchAudio(nextSeg.text, nextVoice).then(nextBuf => {
-                    nextAudioBuffer.current = nextBuf;
-                });
+                fetchAudio(nextSeg.text, nextVoice).then(nextBuf => { nextAudioBuffer.current = nextBuf; });
             }
 
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
-                // Trigger next line with a 150ms "human breath" gap instead of 2 seconds
-                if (isPlayingRef.current) setTimeout(() => playSegment(index + 1), 150); 
+                // Tightened to 50ms for punchy, conversational flow
+                if (isPlayingRef.current) setTimeout(() => playSegment(index + 1), 50); 
             };
 
             activeSource.current = source;
@@ -198,9 +195,24 @@ const Scriptread = () => {
             } 
             else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
-                if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
+                if (dialogueClean) {
+                    const prevText = finalBlocks[finalBlocks.length - 1].text;
+                    // Join dialogue if it doesn't end in punctuation to avoid mid-sentence breaks
+                    const needsSpace = prevText.length > 0 && !prevText.endsWith("-");
+                    finalBlocks[finalBlocks.length - 1].text += (needsSpace ? " " : "") + dialogueClean;
+                }
             } 
             else {
+                // For Narrator lines: Join to the previous block if the previous block was also Narrator
+                // AND the previous block didn't end in a full stop (period, question, etc.)
+                if (finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'narrator') {
+                    const prevBlock = finalBlocks[finalBlocks.length - 1];
+                    const needsJoin = !/[.!?]$/.test(prevBlock.text.trim());
+                    if (needsJoin) {
+                        prevBlock.text += " " + text;
+                        return;
+                    }
+                }
                 finalBlocks.push({ type: 'narrator', text: text });
             }
         });
