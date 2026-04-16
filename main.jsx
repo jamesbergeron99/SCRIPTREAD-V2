@@ -89,6 +89,7 @@ const Scriptread = () => {
             const buffer = await fetchAudio(greetingText, "Serena");
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
+            source.playbackRate.value = 1.10; // Match global speed
             source.connect(audioContext.current.destination);
             source.start();
         } catch (err) { hasGreetedRef.current = false; }
@@ -132,10 +133,10 @@ const Scriptread = () => {
             if (!isPlayingRef.current) return;
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
-            source.playbackRate.value = 1.05; 
+            source.playbackRate.value = 1.10; // INCREASED SPEED to 1.10
             source.connect(audioContext.current.destination);
             source.onended = () => { 
-                setTotalSeconds(prev => prev + (buffer.duration / 1.05)); 
+                setTotalSeconds(prev => prev + (buffer.duration / 1.10)); 
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
             activeSource.current = source;
