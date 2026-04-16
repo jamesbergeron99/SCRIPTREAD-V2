@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 
+const PROMO_CODES = ["FRIENDS", "BETA", "LAUNCH", "JIMMYB", "GIFT"];
+
 const INWORLD_VOICES = {
     narrators: [
         { id: "Serena", name: "Serena" },
@@ -39,6 +41,7 @@ const Scriptread = () => {
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
     const [hasGreeted, setHasGreeted] = useState(false);
+    const [promoMessage, setPromoMessage] = useState("");
 
     const audioContext = useRef(null);
     const activeSource = useRef(null);
@@ -51,11 +54,17 @@ const Scriptread = () => {
     const TRIAL_LIMIT = 60;
     const PAGE_LIMIT = 120;
 
+    // Bulletproof Promo/Status Check
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        if (params.get('status') === 'paid' || params.get('promo') === 'JIMMYB') {
+        const promo = params.get('promo')?.toUpperCase();
+        const status = params.get('status');
+
+        if (status === 'paid' || (promo && PROMO_CODES.includes(promo))) {
             setIsUnlocked(true);
             setShowPaywall(false);
+            setPromoMessage("Access Unlocked!");
+            setTimeout(() => setPromoMessage(""), 4000);
             window.history.replaceState({}, document.title, window.location.pathname);
         }
     }, []);
@@ -70,8 +79,12 @@ const Scriptread = () => {
         }
     }, [currentIdx]);
 
+    // Added isUnlocked check directly to the trigger
     useEffect(() => {
-        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); }
+        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { 
+            stopAudio(); 
+            setShowPaywall(true); 
+        }
     }, [totalSeconds, isUnlocked]);
 
     const handleFirstInteraction = async () => {
@@ -85,7 +98,7 @@ const Scriptread = () => {
                 source.buffer = buffer;
                 source.connect(audioContext.current.destination);
                 source.start();
-            } catch (e) { console.error("Greeting failed", e); }
+            } catch (e) {}
         }
     };
 
@@ -109,12 +122,12 @@ const Scriptread = () => {
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
         });
-        if (!response.ok) throw new Error("Audio fetch failed");
         const data = await response.json();
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
     const playSegment = async (index) => {
+        // Double check lock here
         if (!isPlayingRef.current || index >= segments.length || (!isUnlocked && totalSeconds >= TRIAL_LIMIT)) return;
         setCurrentIdx(index);
         const seg = segments[index];
@@ -141,58 +154,31 @@ const Scriptread = () => {
         let currentActionText = "";
         let hasHitFirstSlug = false;
         let newVoiceMap = { Narrator: "Serena" };
-
         const systemJunk = /^(MORE|CONTINUED|CONT'D|PAGE|\.)$/i;
         const slugKeywords = ["INT", "EXT", "DAY", "NIGHT", "AFTERNOON", "MORNING", "EVENING", "LIVING", "ROOM", "KITCHEN", "HALLWAY", "OFFICE", "STREET"];
-
         const flushAction = () => { 
             if (currentActionText.trim()) { 
                 let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
-                if (txt && !/^(\d+|Page \d+)$/i.test(txt)) {
-                    finalBlocks.push({ type: 'narrator', text: txt });
-                }
+                if (txt && !/^(\d+|Page \d+)$/i.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
                 currentActionText = ""; 
             } 
         };
-
         lines.forEach((line) => {
             let text = line.text.trim();
             if (!text || text.length < 2 || systemJunk.test(text)) return;
             const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.includes(" - ") || slugKeywords.some(k => text.includes(k + "."));
-            if (isSlug) {
-                hasHitFirstSlug = true;
-                flushAction();
-                finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() });
-                return;
-            }
-            if (!hasHitFirstSlug) {
-                const cleanIntro = text.replace(/\([^)]*\)/g, "").trim();
-                if (cleanIntro && !/^\d+$/.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro });
-                return;
-            }
+            if (isSlug) { hasHitFirstSlug = true; flushAction(); finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); return; }
+            if (!hasHitFirstSlug) { const cleanIntro = text.replace(/\([^)]*\)/g, "").trim(); if (cleanIntro && !/^\d+$/.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro }); return; }
             const isAllUpper = text === text.toUpperCase();
             const containsSlugWord = slugKeywords.some(word => text.includes(word));
             const looksLikeCharacter = line.x > 180 && line.x < 330 && isAllUpper && !containsSlugWord && !text.startsWith("(");
             if (looksLikeCharacter) { 
-                flushAction(); 
-                const cleanName = text.replace(/\([^)]*\)/g, "").trim();
-                if (cleanName && !/^\d+$/.test(cleanName)) {
-                    foundChars.add(cleanName); 
-                    if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = autoAssignVoice(cleanName);
-                    finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); 
-                }
+                flushAction(); const cleanName = text.replace(/\([^)]*\)/g, "").trim(); if (cleanName && !/^\d+$/.test(cleanName)) { foundChars.add(cleanName); if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = autoAssignVoice(cleanName); finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); }
             } else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
-                if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
-            } else { 
-                currentActionText += " " + text; 
-            }
+                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim(); if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
+            } else { currentActionText += " " + text; }
         });
-        flushAction();
-        setVoiceMap(newVoiceMap);
-        setCharacters([...foundChars].sort());
-        setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
-        setCurrentIdx(-1);
+        flushAction(); setVoiceMap(newVoiceMap); setCharacters([...foundChars].sort()); setSegments(finalBlocks.filter(b => b.text.trim().length > 0)); setCurrentIdx(-1);
     };
 
     const masterAndExport = async () => {
@@ -232,6 +218,11 @@ const Scriptread = () => {
 
     return (
         <div onClick={handleFirstInteraction} className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
+            {promoMessage && (
+                <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] bg-blue-600 text-white px-8 py-3 rounded-full font-black uppercase italic shadow-2xl animate-bounce">
+                    {promoMessage}
+                </div>
+            )}
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
@@ -249,6 +240,7 @@ const Scriptread = () => {
                     <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
                     {!isUnlocked && <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">Preview: {Math.round(totalSeconds)}s / 60s</div>}
+                    {isUnlocked && <div className="bg-green-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">Full Access Active</div>}
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
