@@ -124,15 +124,7 @@ const Scriptread = () => {
     const parseScript = (lines) => {
         const finalBlocks = [];
         const foundChars = new Set();
-        let currentActionText = "";
         let newVoiceMap = { Narrator: "Serena" };
-
-        const flushAction = () => { 
-            if (currentActionText.trim()) { 
-                finalBlocks.push({ type: 'narrator', text: currentActionText.trim() });
-                currentActionText = ""; 
-            } 
-        };
 
         lines.forEach((line) => {
             let text = line.text.trim();
@@ -141,17 +133,12 @@ const Scriptread = () => {
             if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text)) return;
             if (text.startsWith("(") && text.endsWith(")")) return;
 
-            // 2. HARD-CODED NARRATOR TAGS (Acts, Episodes, Ends)
-            const isForcedNarrator = /ACT|EPISODE|END|FLASHBACK|TITLE|WRITTEN/i.test(text);
-
-            // 3. CHARACTER DETECTION
-            // Rules: All-caps, specific center margin, short length, NOT a forced narrator line
+            // 2. CHARACTER NAME DETECTION
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
-            const isCharacterPos = line.x > 200 && line.x < 320; // Tightened margin
-            const isShortName = text.length < 20; // Character names aren't usually long titles
+            const isCharacterPos = line.x > 180 && line.x < 330;
+            const isShortName = text.length < 25; 
 
-            if (isAllUpper && isCharacterPos && isShortName && !isForcedNarrator) {
-                flushAction();
+            if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
@@ -159,21 +146,20 @@ const Scriptread = () => {
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
-            // 4. DIALOGUE TEXT: Standard dialogue margins
+            // 3. DIALOGUE TEXT: If the previous block was dialogue and we are in dialogue margins
             else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
-            // 5. NARRATOR CATCH-ALL
+            // 4. EVERY LINE IS A NEW BLOCK (Narrator reading everything else individually)
             else {
-                currentActionText += " " + text;
+                finalBlocks.push({ type: 'narrator', text: text });
             }
         });
 
-        flushAction();
         setVoiceMap(newVoiceMap);
         setCharacters([...foundChars].sort());
-        setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
+        setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
         setCurrentIdx(-1);
     };
 
@@ -229,10 +215,11 @@ const Scriptread = () => {
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
                         <LogoIcon size="64" />
-                        <h2 className="text-4xl font-black uppercase italic mb-6">Thanks for listening</h2>
-                        <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold italic">Introductory Price: $2.50 to cover voice costs and unlock full script export.</p>
-                        <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="bg-blue-600 text-white px-12 py-6 font-black uppercase text-xl rounded-full">Unlock Full Script</a>
-                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase text-gray-400">Maybe Later</button>
+                        <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Thank you for listening</h2>
+                        <p className="text-lg mb-4 text-gray-700 font-medium">We hope you're enjoying your table read so far.</p>
+                        <p className="text-sm mb-10 text-gray-500 leading-relaxed uppercase tracking-tight font-bold">Please consider a small contribution of $2.50 to help us cover the costs of these high-fidelity voices and unlock the full script plus WAV export. We truly appreciate your support.</p>
+                        <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="inline-block bg-blue-600 text-white px-12 py-6 font-black uppercase text-xl rounded-full hover:bg-blue-700 transition-all shadow-xl hover:scale-105 active:scale-95">Support Scriptread Pro</a>
+                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors">Maybe Later</button>
                     </div>
                 </div>
             )}
@@ -250,7 +237,7 @@ const Scriptread = () => {
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
                         {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
                     </button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
