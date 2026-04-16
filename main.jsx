@@ -48,6 +48,7 @@ const Scriptread = () => {
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
     const prefetchBuffer = useRef(null);
+    const nextTimeoutRef = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -102,6 +103,7 @@ const Scriptread = () => {
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
         prefetchBuffer.current = null;
+        if (nextTimeoutRef.current) clearTimeout(nextTimeoutRef.current);
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
@@ -144,6 +146,7 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
+            // Use preloaded buffer or fetch fresh
             let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
             prefetchBuffer.current = null; 
 
@@ -153,6 +156,7 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
+            // Start preloading the NEXT line immediately
             if (index + 1 < segments.length) {
                 const nxtSeg = segments[index + 1];
                 const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
@@ -161,11 +165,17 @@ const Scriptread = () => {
 
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
-                if (isPlayingRef.current) playSegment(index + 1); 
             };
 
             activeSource.current = source;
             source.start();
+
+            // PUNCHY FLOW TRIGGER: Overlap the end by 300ms to hide the engine gap
+            const durationMs = (buffer.duration * 1000) - 300;
+            nextTimeoutRef.current = setTimeout(() => {
+                if (isPlayingRef.current) playSegment(index + 1);
+            }, Math.max(0, durationMs));
+
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
@@ -194,7 +204,6 @@ const Scriptread = () => {
             const xPos = line.x || 0;
             const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
 
-            // CHARACTER BLOCK - PERSISTENT AUTO CAST LOGIC
             if (isAllUpper && xPos > 180 && xPos < 330 && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
@@ -218,12 +227,11 @@ const Scriptread = () => {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.includes("CUT")) {
+            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.length < 35) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
             else {
-                // FIXED ACTION BUFFERING: Keeps description sentences together regardless of capitalization
                 actionBuffer += (actionBuffer ? " " : "") + text;
             }
         });
@@ -315,12 +323,12 @@ const Scriptread = () => {
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
                         <div className="p-4 bg-gray-50 rounded-xl border">
-                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                             <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                                 <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
