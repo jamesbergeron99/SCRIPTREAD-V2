@@ -47,7 +47,7 @@ const Scriptread = () => {
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
-    const prefetchBuffer = useRef(null);
+    const nextAudioBuffer = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -97,7 +97,7 @@ const Scriptread = () => {
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
-        prefetchBuffer.current = null;
+        nextAudioBuffer.current = null;
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
@@ -140,9 +140,9 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // PUNCHY FLOW: Use the prefetched buffer if available
-            let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
-            prefetchBuffer.current = null; 
+            // Use preloaded buffer if it exists
+            let buffer = nextAudioBuffer.current || await fetchAudio(seg.text, voice);
+            nextAudioBuffer.current = null; 
 
             if (!isPlayingRef.current) return;
 
@@ -150,16 +150,16 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // PRE-LOAD the next segment immediately while current one is playing
+            // PRELOAD NEXT LINE IMMEDIATELY
             if (index + 1 < segments.length) {
                 const nxtSeg = segments[index + 1];
                 const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
-                fetchAudio(nxtSeg.text, nxtVoice).then(b => { prefetchBuffer.current = b; });
+                fetchAudio(nxtSeg.text, nxtVoice).then(b => { nextAudioBuffer.current = b; });
             }
 
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
-                // Fire next segment with zero-latency
+                // Zero latency transition
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
 
@@ -195,7 +195,7 @@ const Scriptread = () => {
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
             else {
-                // RESTORED ORIGINAL PARSER: One line per block, no merging.
+                // STRICT LINE-BY-LINE MODE: Every single physical line is its own block.
                 finalBlocks.push({ type: 'narrator', text: text });
             }
         });
