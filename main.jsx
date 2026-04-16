@@ -140,7 +140,6 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // Use preloaded buffer if it exists
             let buffer = nextAudioBuffer.current || await fetchAudio(seg.text, voice);
             nextAudioBuffer.current = null; 
 
@@ -150,16 +149,14 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // PRELOAD NEXT LINE IMMEDIATELY
             if (index + 1 < segments.length) {
                 const nxtSeg = segments[index + 1];
                 const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
-                fetchAudio(nxtSeg.text, nxtVoice).then(b => { nextAudioBuffer.current = b; });
+                fetchAudio(nxtSeg.text, nxtVoice).then(b => { prefetchBuffer.current = b; });
             }
 
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
-                // Zero latency transition
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
 
@@ -192,10 +189,28 @@ const Scriptread = () => {
             } 
             else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
-                if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
+                if (dialogueClean) {
+                    const prevText = finalBlocks[finalBlocks.length - 1].text;
+                    // If the current box doesn't end in punctuation, keep adding to it
+                    if (prevText.length > 0 && !/[.!?]$/.test(prevText.trim())) {
+                        finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
+                    } else {
+                        // Otherwise, start a new dialogue block for visibility but same character
+                        finalBlocks.push({ type: 'dialogue', character: finalBlocks[finalBlocks.length - 1].character, text: dialogueClean });
+                    }
+                }
             } 
             else {
-                // STRICT LINE-BY-LINE MODE: Every single physical line is its own block.
+                // Narrator Sentence Stitcher: If the last block was a Narrator block AND it didn't end in punctuation, join them.
+                if (finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'narrator') {
+                    const prevBlock = finalBlocks[finalBlocks.length - 1];
+                    const endsWithPunctuation = /[.!?]$/.test(prevBlock.text.trim());
+                    
+                    if (!endsWithPunctuation) {
+                        prevBlock.text += " " + text;
+                        return;
+                    }
+                }
                 finalBlocks.push({ type: 'narrator', text: text });
             }
         });
