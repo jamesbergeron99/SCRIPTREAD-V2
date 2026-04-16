@@ -47,7 +47,7 @@ const Scriptread = () => {
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
-    const nextAudioBuffer = useRef(null);
+    const prefetchBuffer = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -97,7 +97,7 @@ const Scriptread = () => {
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
-        nextAudioBuffer.current = null;
+        prefetchBuffer.current = null;
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
@@ -133,37 +133,34 @@ const Scriptread = () => {
     const playSegment = async (index) => {
         const hasLock = isUnlocked || isBetaUser;
         if (!isPlayingRef.current || index >= segments.length) return;
-        if (!hasLock && totalSeconds >= TRIAL_LIMIT) {
-            stopAudio();
-            setShowPaywall(true);
-            return;
-        }
+        if (!hasLock && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); return; }
 
         setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            let buffer = nextAudioBuffer.current || await fetchAudio(seg.text, voice);
-            nextAudioBuffer.current = null;
-            
+            // PUNCHY FLOW: Use the prefetched buffer if available
+            let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
+            prefetchBuffer.current = null; 
+
             if (!isPlayingRef.current) return;
 
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // PRELOAD NEXT BLOCK IMMEDIATELY
+            // PRE-LOAD the next segment immediately while current one is playing
             if (index + 1 < segments.length) {
-                const nextSeg = segments[index + 1];
-                const nextVoice = nextSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nextSeg.character] || "Abby");
-                fetchAudio(nextSeg.text, nextVoice).then(nextBuf => { nextAudioBuffer.current = nextBuf; });
+                const nxtSeg = segments[index + 1];
+                const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
+                fetchAudio(nxtSeg.text, nxtVoice).then(b => { prefetchBuffer.current = b; });
             }
 
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
-                // Tightened to 50ms for punchy, conversational flow
-                if (isPlayingRef.current) setTimeout(() => playSegment(index + 1), 50); 
+                // Fire next segment with zero-latency
+                if (isPlayingRef.current) playSegment(index + 1); 
             };
 
             activeSource.current = source;
@@ -195,24 +192,10 @@ const Scriptread = () => {
             } 
             else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
-                if (dialogueClean) {
-                    const prevText = finalBlocks[finalBlocks.length - 1].text;
-                    // Join dialogue if it doesn't end in punctuation to avoid mid-sentence breaks
-                    const needsSpace = prevText.length > 0 && !prevText.endsWith("-");
-                    finalBlocks[finalBlocks.length - 1].text += (needsSpace ? " " : "") + dialogueClean;
-                }
+                if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
             else {
-                // For Narrator lines: Join to the previous block if the previous block was also Narrator
-                // AND the previous block didn't end in a full stop (period, question, etc.)
-                if (finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'narrator') {
-                    const prevBlock = finalBlocks[finalBlocks.length - 1];
-                    const needsJoin = !/[.!?]$/.test(prevBlock.text.trim());
-                    if (needsJoin) {
-                        prevBlock.text += " " + text;
-                        return;
-                    }
-                }
+                // RESTORED ORIGINAL PARSER: One line per block, no merging.
                 finalBlocks.push({ type: 'narrator', text: text });
             }
         });
@@ -255,12 +238,8 @@ const Scriptread = () => {
 
     const VoiceListOptions = () => (
         <>
-            <optgroup label="Narrators">
-                {INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </optgroup>
-            <optgroup label="Custom Cast">
-                {INWORLD_VOICES.custom.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </optgroup>
+            <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Custom Cast">{INWORLD_VOICES.custom.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
             <optgroup label="Female Voices">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
             <optgroup label="Male Voices">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
         </>
@@ -284,18 +263,11 @@ const Scriptread = () => {
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
-                    {isBetaUser ? (
-                        <div className="bg-green-600 text-white px-4 py-1 text-[10px] font-black uppercase rounded-full ml-4 animate-pulse">Beta Access Active</div>
-                    ) : (
-                        <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">Preview: {Math.round(totalSeconds)}s / 120s</div>
-                    )}
+                    {isBetaUser ? <div className="bg-green-600 text-white px-4 py-1 text-[10px] font-black uppercase rounded-full ml-4 animate-pulse">Beta Access Active</div> : <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">Preview: {Math.round(totalSeconds)}s / 120s</div>}
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
-                        {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
-                    </button>
-                    <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">
-                        Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
+                    <label onClick={(e) => e.stopPropagation()} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
@@ -307,8 +279,7 @@ const Scriptread = () => {
                                 }
                                 parseScript(lines);
                             }; reader.readAsArrayBuffer(file);
-                        }} />
-                    </label>
+                        }} /></label>
                 </div>
             </header>
             <div className="flex-1 flex overflow-hidden">
@@ -316,27 +287,13 @@ const Scriptread = () => {
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
                         <div className="p-4 bg-gray-50 rounded-xl border">
-                            <div className="flex justify-between items-center mb-2">
-                                <p className="text-[10px] font-black uppercase text-blue-600">Narrator</p>
-                                <button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                                </button>
-                            </div>
-                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                <VoiceListOptions />
-                            </select>
+                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2">
-                                    <p className="text-[10px] font-black uppercase text-gray-500">{char}</p>
-                                    <button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                                    </button>
-                                </div>
-                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    <VoiceListOptions />
-                                </select>
+                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
                     </div>
@@ -344,30 +301,16 @@ const Scriptread = () => {
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in">
-                                <LogoIcon size="120" />
-                                <h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2>
-                                <p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional-sounding read-throughs for less than a cup of coffee.</p>
-                                <div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]"><div className="h-px w-8 bg-gray-300"></div>Load a PDF to begin<div className="h-px w-8 bg-gray-300"></div></div>
-                            </div>
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2><p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional-sounding read-throughs for less than a cup of coffee.</p><div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]"><div className="h-px w-8 bg-gray-300"></div>Load a PDF to begin<div className="h-px w-8 bg-gray-300"></div></div></div>
                         ) : (
-                            <div className="space-y-6 pb-[50vh]">
-                                {segments.map((seg, i) => (
-                                    <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>
-                                        {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
-                                        <p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p>
-                                    </div>
-                                ))}
-                            </div>
+                            <div className="space-y-6 pb-[50vh]">{segments.map((seg, i) => (<div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>{seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}<p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p></div>))}</div>
                         )}
                     </div>
                 </main>
             </div>
             <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m11 17-5-5 5-5m7 10-5-5 5-5"/></svg></button>
-                <button onClick={() => { if (isPlaying) stopAudio(); else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
-                    {isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}
-                </button>
+                <button onClick={() => { if (isPlaying) stopAudio(); else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">{isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}</button>
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
             </footer>
         </div>
