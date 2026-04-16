@@ -49,7 +49,7 @@ const Scriptread = () => {
     const hasGreetedRef = useRef(false);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
-    const TRIAL_LIMIT = 60;
+    const TRIAL_LIMIT = 120; // UPDATED: 2 Minute Trial
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -163,8 +163,6 @@ const Scriptread = () => {
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
             const isCharacterPos = line.x > 180 && line.x < 330;
             const isShortName = text.length < 25; 
-            
-            // Detection for Sluglines or Transitions
             const isSceneHeader = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("FADE") || text.startsWith("CUT");
 
             if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text) && !isSceneHeader) {
@@ -181,12 +179,10 @@ const Scriptread = () => {
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
             else {
-                // If it's a scene header or technical line, flush whatever was before it first so it stands alone
                 if (isSceneHeader || /ACT|EPISODE|END|FLASHBACK/i.test(text)) {
                     flushAction();
                     finalBlocks.push({ type: 'narrator', text: text });
                 } else {
-                    // Combine descriptive lines into a single sentence/paragraph
                     if (actionBuffer.length > 0 && !actionBuffer.endsWith("-")) actionBuffer += " ";
                     actionBuffer += text;
                 }
@@ -267,7 +263,7 @@ const Scriptread = () => {
                     {isBetaUser ? (
                         <div className="bg-green-600 text-white px-4 py-1 text-[10px] font-black uppercase rounded-full ml-4 animate-pulse">Beta Access Active</div>
                     ) : (
-                        <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">Preview: {Math.round(totalSeconds)}s / 60s</div>
+                        <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4">Preview: {Math.round(totalSeconds)}s / 120s</div>
                     )}
                 </div>
                 <div className="flex gap-4">
