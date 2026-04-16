@@ -169,6 +169,14 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let newVoiceMap = { Narrator: "Serena" };
+        let actionBuffer = "";
+
+        const flushAction = () => {
+            if (actionBuffer.trim()) {
+                finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() });
+                actionBuffer = "";
+            }
+        };
 
         lines.forEach((line) => {
             let text = line.text.trim();
@@ -178,8 +186,11 @@ const Scriptread = () => {
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
             const isCharacterPos = line.x > 180 && line.x < 330;
             const isShortName = text.length < 25; 
+            const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
 
+            // CHARACTER DIALOGUE
             if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text)) {
+                flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
@@ -191,30 +202,31 @@ const Scriptread = () => {
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) {
                     const prevText = finalBlocks[finalBlocks.length - 1].text;
-                    // If the current box doesn't end in punctuation, keep adding to it
                     if (prevText.length > 0 && !/[.!?]$/.test(prevText.trim())) {
                         finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
                     } else {
-                        // Otherwise, start a new dialogue block for visibility but same character
                         finalBlocks.push({ type: 'dialogue', character: finalBlocks[finalBlocks.length - 1].character, text: dialogueClean });
                     }
                 }
             } 
-            else {
-                // Narrator Sentence Stitcher: If the last block was a Narrator block AND it didn't end in punctuation, join them.
-                if (finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'narrator') {
-                    const prevBlock = finalBlocks[finalBlocks.length - 1];
-                    const endsWithPunctuation = /[.!?]$/.test(prevBlock.text.trim());
-                    
-                    if (!endsWithPunctuation) {
-                        prevBlock.text += " " + text;
-                        return;
-                    }
-                }
+            // SLUGLINES & INDIVIDUAL LINES (Titles, etc.)
+            else if (isSlugline || text.includes("Written by") || text.includes("FADE IN") || text.length < 30) {
+                flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
+            }
+            // ACTION BLOCKS (Two or three sentences)
+            else {
+                if (actionBuffer.length > 0 && !actionBuffer.endsWith("-")) actionBuffer += " ";
+                actionBuffer += text;
+                
+                // If it ends with punctuation, we consider it a potentially complete thought but keep adding until a slug or char hits
+                if (/[.!?]$/.test(text)) {
+                    // Logic allows buffer to grow until flushed by a character or slugline
+                }
             }
         });
 
+        flushAction();
         setVoiceMap(newVoiceMap);
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
