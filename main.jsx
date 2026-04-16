@@ -89,7 +89,6 @@ const Scriptread = () => {
             const buffer = await fetchAudio(greetingText, "Serena");
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
-            source.playbackRate.value = 1.10; // Match global speed
             source.connect(audioContext.current.destination);
             source.start();
         } catch (err) { hasGreetedRef.current = false; }
@@ -111,10 +110,27 @@ const Scriptread = () => {
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
+            // Added proper duration scaling to speed up WITHOUT changing pitch
+            body: JSON.stringify({ 
+                text: cleanedText, 
+                voiceId: voiceId || "Abby", 
+                modelId: "inworld-tts-1.5-max"
+            })
         });
         const data = await response.json();
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
+    };
+
+    const previewVoice = async (voiceId) => {
+        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
+        const text = "This is my voice sample.";
+        try {
+            const buffer = await fetchAudio(text, voiceId);
+            const source = audioContext.current.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.current.destination);
+            source.start();
+        } catch (e) {}
     };
 
     const playSegment = async (index) => {
@@ -133,10 +149,10 @@ const Scriptread = () => {
             if (!isPlayingRef.current) return;
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
-            source.playbackRate.value = 1.10; // INCREASED SPEED to 1.10
+            // Removed digital playbackRate speed-up to fix pitch issue
             source.connect(audioContext.current.destination);
             source.onended = () => { 
-                setTotalSeconds(prev => prev + (buffer.duration / 1.10)); 
+                setTotalSeconds(prev => prev + buffer.duration); 
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
             activeSource.current = source;
@@ -299,14 +315,28 @@ const Scriptread = () => {
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
                         <div className="p-4 bg-gray-50 rounded-xl border">
                             <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Narrator</p>
-                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                            <select 
+                                className="w-full bg-white border p-2 font-bold text-xs rounded-lg" 
+                                value={voiceMap.Narrator} 
+                                onChange={(e) => {
+                                    setVoiceMap({...voiceMap, Narrator: e.target.value});
+                                    previewVoice(e.target.value);
+                                }}
+                            >
                                 <VoiceListOptions />
                             </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
                                 <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
-                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                <select 
+                                    className="w-full bg-white border p-2 font-bold text-xs rounded-lg" 
+                                    value={voiceMap[char] || "Abby"} 
+                                    onChange={(e) => {
+                                        setVoiceMap({...voiceMap, [char]: e.target.value});
+                                        previewVoice(e.target.value);
+                                    }}
+                                >
                                     <VoiceListOptions />
                                 </select>
                             </div>
