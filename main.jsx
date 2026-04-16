@@ -47,6 +47,7 @@ const Scriptread = () => {
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
+    const nextAudioBuffer = useRef(null); // The Preload Buffer
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -96,6 +97,7 @@ const Scriptread = () => {
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
+        nextAudioBuffer.current = null;
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
@@ -140,30 +142,35 @@ const Scriptread = () => {
         setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-        
+
         try {
-            let buffer = await fetchAudio(seg.text, voice);
+            // Use preloaded buffer if it exists, otherwise fetch fresh
+            let buffer = nextAudioBuffer.current || await fetchAudio(seg.text, voice);
+            nextAudioBuffer.current = null; // Clear preloader
+            
             if (!isPlayingRef.current) return;
+
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // PUNCHY FLOW: Calculate end time with a tiny overlap to hide the silence gap
-            const lineEnd = audioContext.current.currentTime + buffer.duration;
-            const overlapTrigger = Math.max(0, buffer.duration - 0.45); // Start next line slightly early
+            // PRELOAD LOGIC: Start fetching the NEXT line immediately while this one plays
+            if (index + 1 < segments.length) {
+                const nextSeg = segments[index + 1];
+                const nextVoice = nextSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nextSeg.character] || "Abby");
+                fetchAudio(nextSeg.text, nextVoice).then(nextBuf => {
+                    nextAudioBuffer.current = nextBuf;
+                });
+            }
 
             source.onended = () => { 
-                setTotalSeconds(prev => prev + buffer.duration); 
+                setTotalSeconds(prev => prev + buffer.duration);
+                // Trigger next line with a 150ms "human breath" gap instead of 2 seconds
+                if (isPlayingRef.current) setTimeout(() => playSegment(index + 1), 150); 
             };
 
             activeSource.current = source;
             source.start();
-
-            // Fire the next segment BEFORE this one technically ends to keep the momentum
-            setTimeout(() => {
-                if (isPlayingRef.current) playSegment(index + 1);
-            }, overlapTrigger * 1000);
-
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
