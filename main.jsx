@@ -45,7 +45,6 @@ const Scriptread = () => {
     const audioContext = useRef(null);
     const activeSource = useRef(null);
     const isPlayingRef = useRef(false);
-    const scriptContainerRef = useRef(null);
     const segmentRefs = useRef([]);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
@@ -139,17 +138,19 @@ const Scriptread = () => {
             let text = line.text.trim();
             
             // 1. IGNORE Page Numbers and Parentheses
-            if (!text || /^(\d+|Page \d+)$/i.test(text)) return;
+            if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text)) return;
             if (text.startsWith("(") && text.endsWith(")")) return;
 
-            // 2. CHARACTER NAME DETECTION (Must be All-Caps AND in the specific character center-margin)
-            const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
-            const isCharacterPos = line.x > 180 && line.x < 330;
-            
-            // Safety: Flashbacks and ACT breaks are usually long. Names are short.
-            const isShortEnough = text.length < 25; 
+            // 2. HARD-CODED NARRATOR TAGS (Acts, Episodes, Ends)
+            const isForcedNarrator = /ACT|EPISODE|END|FLASHBACK|TITLE|WRITTEN/i.test(text);
 
-            if (isAllUpper && isCharacterPos && isShortEnough && !text.includes(":")) {
+            // 3. CHARACTER DETECTION
+            // Rules: All-caps, specific center margin, short length, NOT a forced narrator line
+            const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
+            const isCharacterPos = line.x > 200 && line.x < 320; // Tightened margin
+            const isShortName = text.length < 20; // Character names aren't usually long titles
+
+            if (isAllUpper && isCharacterPos && isShortName && !isForcedNarrator) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
@@ -158,12 +159,12 @@ const Scriptread = () => {
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
-            // 3. DIALOGUE TEXT: If the previous block was dialogue and we are in dialogue margins
+            // 4. DIALOGUE TEXT: Standard dialogue margins
             else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
-            // 4. THE NARRATOR RULE: EVERYTHING ELSE (Sluglines, Acts, Titles, Flashbacks)
+            // 5. NARRATOR CATCH-ALL
             else {
                 currentActionText += " " + text;
             }
