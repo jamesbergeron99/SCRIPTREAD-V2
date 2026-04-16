@@ -81,10 +81,8 @@ const Scriptread = () => {
 
     const handleFirstInteraction = async () => {
         if (hasGreetedRef.current || segments.length > 0) return;
-        
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        
         const greetingText = "Welcome to Script reed Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
         try {
             const buffer = await fetchAudio(greetingText, "Serena");
@@ -92,10 +90,7 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             source.start();
-        } catch (err) { 
-            console.error("Greeting failed", err);
-            hasGreetedRef.current = false; 
-        }
+        } catch (err) { hasGreetedRef.current = false; }
     };
 
     const stopAudio = () => {
@@ -104,7 +99,14 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        const cleanedText = text.replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger").replace(/\bScriptread\b/gi, "Script-reed");
+        // Expand abbreviations for the voice engine
+        const cleanedText = text
+            .replace(/\bEXT\b\.?/gi, "Exterior")
+            .replace(/\bINT\b\.?/gi, "Interior")
+            .replace(/\bDEE\b/g, "Dee")
+            .replace(/\bsugar\b/gi, "shuger")
+            .replace(/\bScriptread\b/gi, "Script-reed");
+
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
@@ -144,7 +146,15 @@ const Scriptread = () => {
     const parseScript = (lines) => {
         const finalBlocks = [];
         const foundChars = new Set();
+        let actionBuffer = "";
         let newVoiceMap = { Narrator: "Serena" };
+
+        const flushAction = () => {
+            if (actionBuffer.trim()) {
+                finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() });
+                actionBuffer = "";
+            }
+        };
 
         lines.forEach((line) => {
             let text = line.text.trim();
@@ -156,6 +166,7 @@ const Scriptread = () => {
             const isShortName = text.length < 25; 
 
             if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text)) {
+                flushAction(); // Finish current action before character speaks
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
@@ -168,10 +179,17 @@ const Scriptread = () => {
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
             else {
-                finalBlocks.push({ type: 'narrator', text: text });
+                // If it's a Slugline (all caps but not character name position), flush action first
+                if (isAllUpper && (text.includes("INT") || text.includes("EXT"))) {
+                    flushAction();
+                    finalBlocks.push({ type: 'narrator', text: text });
+                } else {
+                    actionBuffer += " " + text;
+                }
             }
         });
 
+        flushAction(); // Catch any remaining text at the end
         setVoiceMap(newVoiceMap);
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
@@ -229,7 +247,7 @@ const Scriptread = () => {
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
-                        <LogoIcon size="64" />
+                        <div className="flex justify-center mb-6"><LogoIcon size="64" /></div>
                         <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Thank you for listening</h2>
                         <p className="text-lg mb-4 text-gray-700 font-medium">We hope you're enjoying your table read so far.</p>
                         <p className="text-sm mb-10 text-gray-500 leading-relaxed uppercase tracking-tight font-bold">Please consider a small contribution of $2.50 to help us cover the costs of these high-fidelity voices and unlock the full script plus WAV export. We truly appreciate your support.</p>
@@ -253,10 +271,7 @@ const Scriptread = () => {
                         {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
                     </button>
                     <label 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleFirstInteraction(); // Manual trigger when button is hit first
-                        }} 
+                        onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} 
                         className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg"
                     >
                         Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
@@ -306,7 +321,7 @@ const Scriptread = () => {
                         ) : (
                             <div className="space-y-6 pb-[50vh]">
                                 {segments.map((seg, i) => (
-                                    <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100' : 'border-transparent opacity-40'}`}>
+                                    <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl' : 'border-transparent opacity-40'}`}>
                                         {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600">{seg.character}</p>}
                                         <p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p>
                                     </div>
