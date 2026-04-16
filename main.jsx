@@ -22,7 +22,7 @@ const INWORLD_VOICES = {
     ]
 };
 
-const LogoIcon = ({ size = "32", color = "#2563eb" }) => (
+const LogoIcon = ({ size = "40", color = "#2563eb" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         <path d="M7 11.5C7.5 12.5 8.5 13.5 10 14M14 14C15.5 13.5 16.5 12.5 17 11.5" stroke={color} strokeWidth="2" strokeLinecap="round"/>
@@ -55,8 +55,7 @@ const Scriptread = () => {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const promo = params.get('promo')?.toUpperCase();
-        const status = params.get('status');
-        if (status === 'paid' || (promo && PROMO_CODES.includes(promo))) {
+        if (promo && PROMO_CODES.includes(promo)) {
             setIsUnlocked(true);
             setIsBetaUser(true);
             setShowPaywall(false);
@@ -128,30 +127,51 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let currentActionText = "";
-        let hasHitFirstSlug = false;
         let newVoiceMap = { Narrator: "Serena" };
-        const slugKeywords = ["INT", "EXT", "DAY", "NIGHT", "AFTERNOON", "MORNING", "EVENING", "LIVING", "ROOM", "KITCHEN", "HALLWAY", "OFFICE", "STREET"];
+
         const flushAction = () => { 
             if (currentActionText.trim()) { 
-                let txt = currentActionText.trim().replace(/\([^)]*\)/g, "").trim();
-                if (txt && !/^(\d+|Page \d+)$/i.test(txt)) finalBlocks.push({ type: 'narrator', text: txt });
+                finalBlocks.push({ type: 'narrator', text: currentActionText.trim() });
                 currentActionText = ""; 
             } 
         };
+
         lines.forEach((line) => {
             let text = line.text.trim();
-            if (!text || text.length < 2) return;
-            const isSlug = text.startsWith("INT") || text.startsWith("EXT") || text.includes(" - ") || slugKeywords.some(k => text.includes(k + "."));
-            if (isSlug) { hasHitFirstSlug = true; flushAction(); finalBlocks.push({ type: 'narrator', text: text.replace(/\([^)]*\)/g, "").trim() }); return; }
-            if (!hasHitFirstSlug) { const cleanIntro = text.replace(/\([^)]*\)/g, "").trim(); if (cleanIntro && !/^\d+$/.test(cleanIntro)) finalBlocks.push({ type: 'narrator', text: cleanIntro }); return; }
-            const looksLikeCharacter = line.x > 180 && line.x < 330 && text === text.toUpperCase() && !slugKeywords.some(word => text.includes(word)) && !text.startsWith("(");
-            if (looksLikeCharacter) { 
-                flushAction(); const cleanName = text.replace(/\([^)]*\)/g, "").trim(); if (cleanName && !/^\d+$/.test(cleanName)) { foundChars.add(cleanName); if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = "Abby"; finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" }); }
-            } else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim(); if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
-            } else { currentActionText += " " + text; }
+            
+            // 1. IGNORE Page Numbers and Parentheses (as per user rule)
+            if (!text || /^(\d+|Page \d+)$/i.test(text)) return;
+            if (text.startsWith("(") && text.endsWith(")")) return;
+
+            // 2. DIALOGUE CHECK: Character Name must be Uppercase and in the character margin (approx 180-330)
+            const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
+            const isCharacterPos = line.x > 180 && line.x < 330;
+
+            if (isAllUpper && isCharacterPos) {
+                flushAction();
+                const cleanName = text.replace(/\([^)]*\)/g, "").trim();
+                if (cleanName) {
+                    foundChars.add(cleanName);
+                    if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = "Abby";
+                    finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
+                }
+            } 
+            // 3. DIALOGUE TEXT CHECK: If the last block was a character, and we're in dialogue margins
+            else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
+                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
+                if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
+            } 
+            // 4. EVERYTHING ELSE: Narrator reads it (Sluglines, Acts, Transitions, etc.)
+            else {
+                currentActionText += " " + text;
+            }
         });
-        flushAction(); setVoiceMap(newVoiceMap); setCharacters([...foundChars].sort()); setSegments(finalBlocks.filter(b => b.text.trim().length > 0)); setCurrentIdx(-1);
+
+        flushAction();
+        setVoiceMap(newVoiceMap);
+        setCharacters([...foundChars].sort());
+        setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
+        setCurrentIdx(-1);
     };
 
     const masterAndExport = async () => {
@@ -180,7 +200,7 @@ const Scriptread = () => {
             const dataArrArr = masterBuffer.getChannelData(0); let off = 44;
             for (let i=0; i<dataArrArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArrArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
             const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' })); link.download = "Scriptread_Master.wav"; link.click();
-        } catch (e) { console.error("Export failed", e); }
+        } catch (e) {}
         setIsExporting(false);
     };
 
@@ -195,12 +215,8 @@ const Scriptread = () => {
                     {INWORLD_VOICES.custom.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </optgroup>
             )}
-            <optgroup label="Female Voices">
-                {INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </optgroup>
-            <optgroup label="Male Voices">
-                {INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </optgroup>
+            <optgroup label="Female Voices">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Male Voices">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
         </>
     );
 
