@@ -47,7 +47,7 @@ const Scriptread = () => {
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
-    const prefetchBuffer = useRef(null);
+    const nextAudioBuffer = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -81,6 +81,23 @@ const Scriptread = () => {
         }
     }, [totalSeconds, isUnlocked, isBetaUser]);
 
+    const fetchAudio = async (text, voiceId) => {
+        const cleanedText = text
+            .replace(/\bEXT\b\.?/gi, "Exterior")
+            .replace(/\bINT\b\.?/gi, "Interior")
+            .replace(/\bDEE\b/g, "Dee")
+            .replace(/\bsugar\b/gi, "shuger")
+            .replace(/\bScriptread\b/gi, "Script-reed");
+
+        const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
+            method: "POST",
+            headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
+        });
+        const data = await response.json();
+        return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
+    };
+
     const handleFirstInteraction = async () => {
         if (hasGreetedRef.current) return;
         hasGreetedRef.current = true;
@@ -97,25 +114,8 @@ const Scriptread = () => {
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
-        prefetchBuffer.current = null;
+        nextAudioBuffer.current = null;
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
-    };
-
-    const fetchAudio = async (text, voiceId) => {
-        const cleanedText = text
-            .replace(/\bEXT\b\.?/gi, "Exterior")
-            .replace(/\bINT\b\.?/gi, "Interior")
-            .replace(/\bDEE\b/g, "Dee")
-            .replace(/\bsugar\b/gi, "shuger")
-            .replace(/\bScriptread\b/gi, "Script-reed");
-
-        const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
-            method: "POST",
-            headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
-        });
-        const data = await response.json();
-        return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
     const auditionVoice = async (voiceId, charName) => {
@@ -140,26 +140,21 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
-            prefetchBuffer.current = null; 
-
+            let buffer = nextAudioBuffer.current || await fetchAudio(seg.text, voice);
+            nextAudioBuffer.current = null; 
             if (!isPlayingRef.current) return;
-
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
-            
             if (index + 1 < segments.length) {
                 const nxtSeg = segments[index + 1];
                 const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
                 fetchAudio(nxtSeg.text, nxtVoice).then(b => { prefetchBuffer.current = b; });
             }
-
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
-
             activeSource.current = source;
             source.start();
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
@@ -169,17 +164,17 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let newVoiceMap = { Narrator: "Serena" };
-        let currentActionBuffer = "";
+        let actionBuffer = "";
 
         const flushAction = () => {
-            if (currentActionBuffer.trim()) {
-                finalBlocks.push({ type: 'narrator', text: currentActionBuffer.trim() });
-                currentActionBuffer = "";
+            if (actionBuffer.trim()) {
+                finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() });
+                actionBuffer = "";
             }
         };
 
-        const maleTerms = ["man", "boy", "he", "him", "his", "guy", "husband", "father", "son"];
-        const femaleTerms = ["woman", "girl", "she", "her", "hers", "lady", "wife", "mother", "daughter", "trans girl"];
+        const maleHints = ["man", "boy", "he", "him", "his", "guy", "husband", "father", "son"];
+        const femaleHints = ["woman", "girl", "she", "her", "hers", "lady", "wife", "mother", "daughter", "trans girl"];
 
         lines.forEach((line, i) => {
             let text = line.text.trim();
@@ -187,41 +182,38 @@ const Scriptread = () => {
             if (text.startsWith("(") && text.endsWith(")")) return;
 
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
-            const isCharacterPos = line.x > 180 && line.x < 330;
-            const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
-
-            // CHARACTER DETECTION & AUTO-CASTING
-            if (isAllUpper && isCharacterPos && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
+            const xPos = line.x || 0;
+            
+            // 1. CHARACTER NAMES (Centered approx 180-330)
+            if (isAllUpper && xPos > 180 && xPos < 330 && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
                     if (!newVoiceMap[cleanName]) {
-                        // Scan descriptions for context
                         const context = lines.slice(i + 1, i + 6).map(l => l.text.toLowerCase()).join(" ");
-                        let gender = 'female'; // Default to female (Abby pool)
-                        if (maleTerms.some(t => context.includes(t))) gender = 'male';
-                        else if (femaleTerms.some(t => context.includes(t))) gender = 'female';
-                        
+                        let gender = 'female';
+                        if (maleHints.some(t => context.includes(t))) gender = 'male';
+                        else if (femaleHints.some(t => context.includes(t))) gender = 'female';
                         const pool = INWORLD_VOICES[gender];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
                     }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
-            // DIALOGUE TEXT
-            else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
+            // 2. DIALOGUE TEXT (Pushed in from left, approx 120-400)
+            else if (xPos > 120 && xPos < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            // SLUGLINES & TITLE LINES (Always separate)
-            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.length < 30) {
+            // 3. SLUGLINES & INDIVIDUAL BREAKS (Usually far left < 120 or distinct patterns)
+            else if (text.startsWith("INT") || text.startsWith("EXT") || text.includes("Written by") || text.includes("@") || text.includes("FADE")) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
-            // ACTION DESCRIPTION BUFFER (Collects lines into one box)
+            // 4. ACTION DESCRIPTION GATHERING
             else {
-                currentActionBuffer += (currentActionBuffer ? " " : "") + text;
+                actionBuffer += (actionBuffer ? " " : "") + text;
             }
         });
 
@@ -278,10 +270,9 @@ const Scriptread = () => {
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
                         <div className="flex justify-center mb-6"><LogoIcon size="64" /></div>
                         <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Thank you for listening</h2>
-                        <p className="text-lg mb-4 text-gray-700 font-medium">We hope you're enjoying your table read so far.</p>
-                        <p className="text-sm mb-10 text-gray-500 leading-relaxed uppercase tracking-tight font-bold">Please consider a small contribution of $2.50 to help us cover the costs of these high-fidelity voices and unlock the full script plus WAV export. We truly appreciate your support.</p>
-                        <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="inline-block bg-blue-600 text-white px-12 py-6 font-black uppercase text-xl rounded-full hover:bg-blue-700 transition-all shadow-xl hover:scale-105 active:scale-95">Support Scriptread Pro</a>
-                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors">Maybe Later</button>
+                        <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold leading-relaxed">Please consider a small contribution of $2.50 to help us cover voice costs and unlock the full script plus WAV export. We truly appreciate your support.</p>
+                        <a href="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" target="_blank" className="inline-block bg-blue-600 text-white px-12 py-6 font-black uppercase text-xl rounded-full shadow-xl hover:scale-105 active:scale-95">Support Scriptread Pro</a>
+                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black">Maybe Later</button>
                     </div>
                 </div>
             )}
@@ -293,7 +284,7 @@ const Scriptread = () => {
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
-                    <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <label onClick={handleFirstInteraction} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
@@ -313,12 +304,12 @@ const Scriptread = () => {
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
                         <div className="p-4 bg-gray-50 rounded-xl border">
-                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                             <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                                 <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
@@ -327,7 +318,7 @@ const Scriptread = () => {
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2><p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional-sounding read-throughs for less than a cup of coffee.</p><div className="animate-pulse flex items-center justify-center gap-3 text-gray-400 font-bold uppercase text-xs tracking-[0.3em]"><div className="h-px w-8 bg-gray-300"></div>Load a PDF to begin<div className="h-px w-8 bg-gray-300"></div></div></div>
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2><p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional-sounding read-throughs for less than a cup of coffee.</p></div>
                         ) : (
                             <div className="space-y-6 pb-[50vh]">{segments.map((seg, i) => (<div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>{seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}<p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p></div>))}</div>
                         )}
