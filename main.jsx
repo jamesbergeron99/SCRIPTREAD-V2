@@ -40,7 +40,6 @@ const Scriptread = () => {
     const [showPaywall, setShowPaywall] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
-    const [hasGreeted, setHasGreeted] = useState(false);
     const [isBetaUser, setIsBetaUser] = useState(false);
 
     const audioContext = useRef(null);
@@ -139,15 +138,18 @@ const Scriptread = () => {
         lines.forEach((line) => {
             let text = line.text.trim();
             
-            // 1. IGNORE Page Numbers and Parentheses (as per user rule)
+            // 1. IGNORE Page Numbers and Parentheses
             if (!text || /^(\d+|Page \d+)$/i.test(text)) return;
             if (text.startsWith("(") && text.endsWith(")")) return;
 
-            // 2. DIALOGUE CHECK: Character Name must be Uppercase and in the character margin (approx 180-330)
+            // 2. CHARACTER NAME DETECTION (Must be All-Caps AND in the specific character center-margin)
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
             const isCharacterPos = line.x > 180 && line.x < 330;
+            
+            // Safety: Flashbacks and ACT breaks are usually long. Names are short.
+            const isShortEnough = text.length < 25; 
 
-            if (isAllUpper && isCharacterPos) {
+            if (isAllUpper && isCharacterPos && isShortEnough && !text.includes(":")) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
@@ -156,12 +158,12 @@ const Scriptread = () => {
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
-            // 3. DIALOGUE TEXT CHECK: If the last block was a character, and we're in dialogue margins
+            // 3. DIALOGUE TEXT: If the previous block was dialogue and we are in dialogue margins
             else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
                 const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
-            // 4. EVERYTHING ELSE: Narrator reads it (Sluglines, Acts, Transitions, etc.)
+            // 4. THE NARRATOR RULE: EVERYTHING ELSE (Sluglines, Acts, Titles, Flashbacks)
             else {
                 currentActionText += " " + text;
             }
