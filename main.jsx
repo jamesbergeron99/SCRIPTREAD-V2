@@ -99,7 +99,6 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        // Expand abbreviations for the voice engine
         const cleanedText = text
             .replace(/\bEXT\b\.?/gi, "Exterior")
             .replace(/\bINT\b\.?/gi, "Interior")
@@ -166,7 +165,7 @@ const Scriptread = () => {
             const isShortName = text.length < 25; 
 
             if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text)) {
-                flushAction(); // Finish current action before character speaks
+                flushAction(); 
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
@@ -179,17 +178,14 @@ const Scriptread = () => {
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
             else {
-                // If it's a Slugline (all caps but not character name position), flush action first
-                if (isAllUpper && (text.includes("INT") || text.includes("EXT"))) {
-                    flushAction();
-                    finalBlocks.push({ type: 'narrator', text: text });
-                } else {
-                    actionBuffer += " " + text;
-                }
+                // If it's a Slugline, don't flush yet, just add it to the buffer so it reads continuously
+                // We add a period if the buffer isn't empty to ensure a natural sentence break
+                if (actionBuffer.length > 0 && !actionBuffer.endsWith(".")) actionBuffer += ". ";
+                actionBuffer += text;
             }
         });
 
-        flushAction(); // Catch any remaining text at the end
+        flushAction();
         setVoiceMap(newVoiceMap);
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
