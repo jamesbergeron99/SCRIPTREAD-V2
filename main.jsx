@@ -136,36 +136,41 @@ const Scriptread = () => {
             setShowPaywall(true);
             return;
         }
+
         setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
+        
         try {
             let buffer = await fetchAudio(seg.text, voice);
             if (!isPlayingRef.current) return;
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
+            
+            // PUNCHY FLOW: Calculate end time with a tiny overlap to hide the silence gap
+            const lineEnd = audioContext.current.currentTime + buffer.duration;
+            const overlapTrigger = Math.max(0, buffer.duration - 0.45); // Start next line slightly early
+
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration); 
-                if (isPlayingRef.current) playSegment(index + 1); 
             };
+
             activeSource.current = source;
             source.start();
+
+            // Fire the next segment BEFORE this one technically ends to keep the momentum
+            setTimeout(() => {
+                if (isPlayingRef.current) playSegment(index + 1);
+            }, overlapTrigger * 1000);
+
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
     const parseScript = (lines) => {
         const finalBlocks = [];
         const foundChars = new Set();
-        let actionBuffer = "";
         let newVoiceMap = { Narrator: "Serena" };
-
-        const flushAction = () => {
-            if (actionBuffer.trim()) {
-                finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() });
-                actionBuffer = "";
-            }
-        };
 
         lines.forEach((line) => {
             let text = line.text.trim();
@@ -175,10 +180,8 @@ const Scriptread = () => {
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
             const isCharacterPos = line.x > 180 && line.x < 330;
             const isShortName = text.length < 25; 
-            const isSceneHeader = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("FADE") || text.startsWith("CUT");
 
-            if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text) && !isSceneHeader) {
-                flushAction(); 
+            if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
@@ -191,17 +194,10 @@ const Scriptread = () => {
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
             else {
-                if (isSceneHeader || /ACT|EPISODE|END|FLASHBACK/i.test(text)) {
-                    flushAction();
-                    finalBlocks.push({ type: 'narrator', text: text });
-                } else {
-                    if (actionBuffer.length > 0 && !actionBuffer.endsWith("-")) actionBuffer += " ";
-                    actionBuffer += text;
-                }
+                finalBlocks.push({ type: 'narrator', text: text });
             }
         });
 
-        flushAction();
         setVoiceMap(newVoiceMap);
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
@@ -246,12 +242,8 @@ const Scriptread = () => {
             <optgroup label="Custom Cast">
                 {INWORLD_VOICES.custom.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
             </optgroup>
-            <optgroup label="Female Voices">
-                {INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </optgroup>
-            <optgroup label="Male Voices">
-                {INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </optgroup>
+            <optgroup label="Female Voices">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+            <optgroup label="Male Voices">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
         </>
     );
 
@@ -283,10 +275,7 @@ const Scriptread = () => {
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
                         {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
                     </button>
-                    <label 
-                        onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} 
-                        className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg"
-                    >
+                    <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">
                         Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
