@@ -40,13 +40,13 @@ const Scriptread = () => {
     const [showPaywall, setShowPaywall] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
-    const [hasGreeted, setHasGreeted] = useState(false);
     const [isBetaUser, setIsBetaUser] = useState(false);
 
     const audioContext = useRef(null);
     const activeSource = useRef(null);
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
+    const hasGreetedRef = useRef(false); // Using a Ref to prevent double-firing instantly
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
@@ -79,18 +79,23 @@ const Scriptread = () => {
         }
     }, [totalSeconds, isUnlocked, isBetaUser]);
 
-    const handleFirstInteraction = async () => {
-        if (!hasGreeted && segments.length === 0) {
-            if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-            setHasGreeted(true);
-            const greetingText = "Welcome to Script reed Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
-            try {
-                const buffer = await fetchAudio(greetingText, "Serena");
-                const source = audioContext.current.createBufferSource();
-                source.buffer = buffer;
-                source.connect(audioContext.current.destination);
-                source.start();
-            } catch (e) { console.error("Greeting failed", e); }
+    const handleFirstInteraction = async (e) => {
+        // Stop if we've already started greeting or if a script is loaded
+        if (hasGreetedRef.current || segments.length > 0) return;
+        
+        hasGreetedRef.current = true;
+        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
+        
+        const greetingText = "Welcome to Script reed Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
+        try {
+            const buffer = await fetchAudio(greetingText, "Serena");
+            const source = audioContext.current.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.current.destination);
+            source.start();
+        } catch (err) { 
+            console.error("Greeting failed", err);
+            hasGreetedRef.current = false; // Reset if it failed so user can try again
         }
     };
 
@@ -248,7 +253,11 @@ const Scriptread = () => {
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
                         {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
                     </button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <label 
+                        onClick={(e) => e.stopPropagation()} // Stop the "click anywhere" trigger here
+                        className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg"
+                    >
+                        Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
@@ -307,7 +316,7 @@ const Scriptread = () => {
             </div>
             <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m11 17-5-5 5-5m7 10-5-5 5-5"/></svg></button>
-                <button onClick={() => { if (isPlaying) stopAudio(); else { isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
+                <button onClick={() => { if (isPlaying) stopAudio(); else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">
                     {isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}
                 </button>
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
