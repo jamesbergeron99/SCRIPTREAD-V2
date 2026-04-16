@@ -62,6 +62,11 @@ const Scriptread = () => {
             setShowPaywall(false);
             window.history.replaceState({}, document.title, window.location.pathname);
         }
+        
+        // GLOBAL WELCOME TRIGGER
+        const handleWelcome = () => handleFirstInteraction();
+        window.addEventListener('mousedown', handleWelcome);
+        return () => window.removeEventListener('mousedown', handleWelcome);
     }, []);
 
     useEffect(() => {
@@ -85,7 +90,7 @@ const Scriptread = () => {
         if (hasGreetedRef.current) return;
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        const greetingText = "Welcome to Script reed Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
+        const greetingText = "Welcome to Script reed Pro. Create professional sounding read throughs for less than a cup of coffee.";
         try {
             const buffer = await fetchAudio(greetingText, "Serena");
             const source = audioContext.current.createBufferSource();
@@ -140,7 +145,6 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // SPEED FIX: Use the prefetched buffer if available for zero lag
             let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
             prefetchBuffer.current = null; 
 
@@ -150,7 +154,6 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // PRELOAD NEXT BLOCK IMMEDIATELY
             if (index + 1 < segments.length) {
                 const nxtSeg = segments[index + 1];
                 const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
@@ -180,8 +183,8 @@ const Scriptread = () => {
             }
         };
 
-        const maleHints = ["man", "boy", "he", "him", "his", "guy", "husband", "father", "son", "male"];
-        const femaleHints = ["woman", "girl", "she", "her", "hers", "lady", "wife", "mother", "daughter", "female", "trans girl", "catgirl"];
+        const femaleTerms = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "princess", "queen", "ms", "mrs", "miss"];
+        const maleTerms = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "prince", "king", "mr"];
 
         lines.forEach((line, i) => {
             let text = line.text.trim();
@@ -198,10 +201,18 @@ const Scriptread = () => {
                 if (cleanName) {
                     foundChars.add(cleanName);
                     if (!newVoiceMap[cleanName]) {
-                        const context = lines.slice(i - 2, i + 8).map(l => l.text.toLowerCase()).join(" ");
-                        let gender = 'female';
-                        if (maleHints.some(h => context.includes(h)) && !femaleHints.some(h => context.includes(h))) gender = 'male';
-                        else if (femaleHints.some(h => context.includes(h))) gender = 'female';
+                        // AGGRESSIVE AUTO-CAST SCANNER
+                        const scannerRange = lines.slice(Math.max(0, i - 5), i + 15).map(l => l.text.toLowerCase()).join(" ");
+                        let score = 0; // Negative for Male, Positive for Female
+                        
+                        femaleTerms.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score += 2; });
+                        maleTerms.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score -= 2; });
+                        
+                        // Name specific overrides
+                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 10;
+                        if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 10;
+
+                        const gender = score >= 0 ? 'female' : 'male';
                         const pool = INWORLD_VOICES[gender];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
                     }
@@ -212,7 +223,7 @@ const Scriptread = () => {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE")) {
+            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.length < 35) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
@@ -268,7 +279,7 @@ const Scriptread = () => {
     );
 
     return (
-        <div onClick={handleFirstInteraction} className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
+        <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
@@ -288,7 +299,7 @@ const Scriptread = () => {
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
-                    <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
