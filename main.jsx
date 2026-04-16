@@ -46,7 +46,7 @@ const Scriptread = () => {
     const activeSource = useRef(null);
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
-    const hasGreetedRef = useRef(false); // Using a Ref to prevent double-firing instantly
+    const hasGreetedRef = useRef(false);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 60;
@@ -79,8 +79,7 @@ const Scriptread = () => {
         }
     }, [totalSeconds, isUnlocked, isBetaUser]);
 
-    const handleFirstInteraction = async (e) => {
-        // Stop if we've already started greeting or if a script is loaded
+    const handleFirstInteraction = async () => {
         if (hasGreetedRef.current || segments.length > 0) return;
         
         hasGreetedRef.current = true;
@@ -95,7 +94,7 @@ const Scriptread = () => {
             source.start();
         } catch (err) { 
             console.error("Greeting failed", err);
-            hasGreetedRef.current = false; // Reset if it failed so user can try again
+            hasGreetedRef.current = false; 
         }
     };
 
@@ -254,7 +253,10 @@ const Scriptread = () => {
                         {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
                     </button>
                     <label 
-                        onClick={(e) => e.stopPropagation()} // Stop the "click anywhere" trigger here
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleFirstInteraction(); // Manual trigger when button is hit first
+                        }} 
                         className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg"
                     >
                         Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
