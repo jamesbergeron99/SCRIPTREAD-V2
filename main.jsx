@@ -56,7 +56,6 @@ const Scriptread = () => {
         const params = new URLSearchParams(window.location.search);
         const promo = params.get('promo')?.toUpperCase();
         const status = params.get('status');
-
         if (status === 'paid' || (promo && PROMO_CODES.includes(promo))) {
             setIsUnlocked(true);
             setIsBetaUser(true);
@@ -106,7 +105,6 @@ const Scriptread = () => {
             setShowPaywall(true);
             return;
         }
-
         setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
@@ -156,6 +154,26 @@ const Scriptread = () => {
         flushAction(); setVoiceMap(newVoiceMap); setCharacters([...foundChars].sort()); setSegments(finalBlocks.filter(b => b.text.trim().length > 0)); setCurrentIdx(-1);
     };
 
+    const VoiceListOptions = ({ isNarratorSelect }) => (
+        <>
+            {isNarratorSelect ? (
+                <optgroup label="Narrators">
+                    {INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </optgroup>
+            ) : (
+                <optgroup label="Custom Cast">
+                    {INWORLD_VOICES.custom.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </optgroup>
+            )}
+            <optgroup label="Female Voices">
+                {INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </optgroup>
+            <optgroup label="Male Voices">
+                {INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </optgroup>
+        </>
+    );
+
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
@@ -197,20 +215,19 @@ const Scriptread = () => {
             </header>
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0">
+                    <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4">
                         <div className="p-4 bg-gray-50 rounded-xl border">
                             <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Narrator</p>
                             <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                {INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                <VoiceListOptions isNarratorSelect={true} />
                             </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
                                 <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
                                 <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    <optgroup label="Custom"><option value="default-oglabcjnetcklcq7rghmbw__design-voice-045a5de4">Zack</option><option value="default-oglabcjnetcklcq7rghmbw__design-voice-30af450b">Oleg</option></optgroup>
-                                    <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                                    <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                    <VoiceListOptions isNarratorSelect={false} />
                                 </select>
                             </div>
                         ))}
