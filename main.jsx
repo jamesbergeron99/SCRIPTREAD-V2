@@ -47,7 +47,7 @@ const Scriptread = () => {
     const isPlayingRef = useRef(false);
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
-    const nextAudioBuffer = useRef(null);
+    const prefetchBuffer = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -82,7 +82,7 @@ const Scriptread = () => {
     }, [totalSeconds, isUnlocked, isBetaUser]);
 
     const handleFirstInteraction = async () => {
-        if (hasGreetedRef.current || segments.length > 0) return;
+        if (hasGreetedRef.current) return;
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
         const greetingText = "Welcome to Script reed Pro. Create professional-sounding read-throughs for less than a cup of coffee.";
@@ -97,7 +97,7 @@ const Scriptread = () => {
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
-        nextAudioBuffer.current = null;
+        prefetchBuffer.current = null;
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
@@ -140,8 +140,8 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            let buffer = nextAudioBuffer.current || await fetchAudio(seg.text, voice);
-            nextAudioBuffer.current = null; 
+            let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
+            prefetchBuffer.current = null; 
 
             if (!isPlayingRef.current) return;
 
@@ -169,60 +169,59 @@ const Scriptread = () => {
         const finalBlocks = [];
         const foundChars = new Set();
         let newVoiceMap = { Narrator: "Serena" };
-        let actionBuffer = "";
+        let currentActionBuffer = "";
 
         const flushAction = () => {
-            if (actionBuffer.trim()) {
-                finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() });
-                actionBuffer = "";
+            if (currentActionBuffer.trim()) {
+                finalBlocks.push({ type: 'narrator', text: currentActionBuffer.trim() });
+                currentActionBuffer = "";
             }
         };
 
-        lines.forEach((line) => {
+        const maleTerms = ["man", "boy", "he", "him", "his", "guy", "husband", "father", "son"];
+        const femaleTerms = ["woman", "girl", "she", "her", "hers", "lady", "wife", "mother", "daughter", "trans girl"];
+
+        lines.forEach((line, i) => {
             let text = line.text.trim();
             if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text)) return;
             if (text.startsWith("(") && text.endsWith(")")) return;
 
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
             const isCharacterPos = line.x > 180 && line.x < 330;
-            const isShortName = text.length < 25; 
             const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
 
-            // CHARACTER DIALOGUE
-            if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text)) {
+            // CHARACTER DETECTION & AUTO-CASTING
+            if (isAllUpper && isCharacterPos && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
-                    if (!newVoiceMap[cleanName]) newVoiceMap[cleanName] = "Abby";
+                    if (!newVoiceMap[cleanName]) {
+                        // Scan descriptions for context
+                        const context = lines.slice(i + 1, i + 6).map(l => l.text.toLowerCase()).join(" ");
+                        let gender = 'female'; // Default to female (Abby pool)
+                        if (maleTerms.some(t => context.includes(t))) gender = 'male';
+                        else if (femaleTerms.some(t => context.includes(t))) gender = 'female';
+                        
+                        const pool = INWORLD_VOICES[gender];
+                        newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
+                    }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
+            // DIALOGUE TEXT
             else if (line.x > 120 && line.x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                const dialogueClean = text.replace(/\([^)]*\)/g, "").trim();
-                if (dialogueClean) {
-                    const prevText = finalBlocks[finalBlocks.length - 1].text;
-                    if (prevText.length > 0 && !/[.!?]$/.test(prevText.trim())) {
-                        finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
-                    } else {
-                        finalBlocks.push({ type: 'dialogue', character: finalBlocks[finalBlocks.length - 1].character, text: dialogueClean });
-                    }
-                }
+                const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
+                if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            // SLUGLINES & INDIVIDUAL LINES (Titles, etc.)
-            else if (isSlugline || text.includes("Written by") || text.includes("FADE IN") || text.length < 30) {
+            // SLUGLINES & TITLE LINES (Always separate)
+            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.length < 30) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
-            // ACTION BLOCKS (Two or three sentences)
+            // ACTION DESCRIPTION BUFFER (Collects lines into one box)
             else {
-                if (actionBuffer.length > 0 && !actionBuffer.endsWith("-")) actionBuffer += " ";
-                actionBuffer += text;
-                
-                // If it ends with punctuation, we consider it a potentially complete thought but keep adding until a slug or char hits
-                if (/[.!?]$/.test(text)) {
-                    // Logic allows buffer to grow until flushed by a character or slugline
-                }
+                currentActionBuffer += (currentActionBuffer ? " " : "") + text;
             }
         });
 
@@ -294,7 +293,7 @@ const Scriptread = () => {
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>{isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}</button>
-                    <label onClick={(e) => e.stopPropagation()} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                    <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
