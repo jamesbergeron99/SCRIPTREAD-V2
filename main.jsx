@@ -154,6 +154,36 @@ const Scriptread = () => {
         flushAction(); setVoiceMap(newVoiceMap); setCharacters([...foundChars].sort()); setSegments(finalBlocks.filter(b => b.text.trim().length > 0)); setCurrentIdx(-1);
     };
 
+    const masterAndExport = async () => {
+        if (!isUnlocked && !isBetaUser) { setShowPaywall(true); return; }
+        setIsExporting(true); setExportProgress(0);
+        const buffers = [];
+        try {
+            for (let i = 0; i < segments.length; i++) {
+                setExportProgress(Math.round((i / segments.length) * 100));
+                const seg = segments[i]; 
+                const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
+                const buffer = await fetchAudio(seg.text, voice); 
+                buffers.push(buffer);
+            }
+            const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
+            const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
+            const channelData = masterBuffer.getChannelData(0);
+            let offset = 0; 
+            buffers.forEach(b => { channelData.set(b.getChannelData(0), offset); offset += b.length; });
+            const wavLen = masterBuffer.length * 2; 
+            const view = new DataView(new ArrayBuffer(44 + wavLen));
+            const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
+            writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
+            view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
+            view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
+            const dataArrArr = masterBuffer.getChannelData(0); let off = 44;
+            for (let i=0; i<dataArrArr.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, dataArrArr[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' })); link.download = "Scriptread_Master.wav"; link.click();
+        } catch (e) { console.error("Export failed", e); }
+        setIsExporting(false);
+    };
+
     const VoiceListOptions = ({ isNarratorSelect }) => (
         <>
             {isNarratorSelect ? (
@@ -198,6 +228,9 @@ const Scriptread = () => {
                     )}
                 </div>
                 <div className="flex gap-4">
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${(isUnlocked || isBetaUser) ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
+                        {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
+                    </button>
                     <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
