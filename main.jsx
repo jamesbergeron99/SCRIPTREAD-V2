@@ -163,8 +163,11 @@ const Scriptread = () => {
             const isAllUpper = text === text.toUpperCase() && /[A-Z]/.test(text);
             const isCharacterPos = line.x > 180 && line.x < 330;
             const isShortName = text.length < 25; 
+            
+            // Detection for Sluglines or Transitions
+            const isSceneHeader = text.startsWith("INT") || text.startsWith("EXT") || text.startsWith("FADE") || text.startsWith("CUT");
 
-            if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text)) {
+            if (isAllUpper && isCharacterPos && isShortName && !/ACT|EPISODE|END|TITLE/i.test(text) && !isSceneHeader) {
                 flushAction(); 
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
@@ -178,10 +181,15 @@ const Scriptread = () => {
                 if (dialogueClean) finalBlocks[finalBlocks.length - 1].text += " " + dialogueClean;
             } 
             else {
-                // If it's a Slugline, don't flush yet, just add it to the buffer so it reads continuously
-                // We add a period if the buffer isn't empty to ensure a natural sentence break
-                if (actionBuffer.length > 0 && !actionBuffer.endsWith(".")) actionBuffer += ". ";
-                actionBuffer += text;
+                // If it's a scene header or technical line, flush whatever was before it first so it stands alone
+                if (isSceneHeader || /ACT|EPISODE|END|FLASHBACK/i.test(text)) {
+                    flushAction();
+                    finalBlocks.push({ type: 'narrator', text: text });
+                } else {
+                    // Combine descriptive lines into a single sentence/paragraph
+                    if (actionBuffer.length > 0 && !actionBuffer.endsWith("-")) actionBuffer += " ";
+                    actionBuffer += text;
+                }
             }
         });
 
@@ -317,8 +325,8 @@ const Scriptread = () => {
                         ) : (
                             <div className="space-y-6 pb-[50vh]">
                                 {segments.map((seg, i) => (
-                                    <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl' : 'border-transparent opacity-40'}`}>
-                                        {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600">{seg.character}</p>}
+                                    <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>
+                                        {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
                                         <p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p>
                                     </div>
                                 ))}
