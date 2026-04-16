@@ -49,7 +49,8 @@ const Scriptread = () => {
     const hasGreetedRef = useRef(false);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
-    const TRIAL_LIMIT = 120; // UPDATED: 2 Minute Trial
+    const TRIAL_LIMIT = 120;
+    const MAX_PAGES = 120;
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -278,8 +279,9 @@ const Scriptread = () => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
+                                const limit = Math.min(pdf.numPages, MAX_PAGES); // Hard 120 page limit
                                 let lines = [];
-                                for (let i = 1; i <= pdf.numPages; i++) {
+                                for (let i = 1; i <= limit; i++) {
                                     const page = await pdf.getPage(i); const content = await page.getTextContent();
                                     content.items.forEach(item => lines.push({ text: item.str, x: item.transform[4] }));
                                 }
@@ -290,9 +292,9 @@ const Scriptread = () => {
                 </div>
             </header>
             <div className="flex-1 flex overflow-hidden">
-                <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0">
+                <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-hidden">
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">Production Cast</div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
                         <div className="p-4 bg-gray-50 rounded-xl border">
                             <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Narrator</p>
                             <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
