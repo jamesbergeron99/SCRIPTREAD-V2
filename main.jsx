@@ -144,7 +144,7 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // HIGH PRIORITY PRELOAD: Start fetching NEXT line while this one is just beginning
+            // PRELOAD THE NEXT LINE WHILE THIS ONE PLAYS
             if (index + 1 < segments.length) {
                 const nxtSeg = segments[index + 1];
                 const nxtVoice = nxtSeg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxtSeg.character] || "Abby");
@@ -162,7 +162,7 @@ const Scriptread = () => {
             
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
-                // INSTANT TRIGGER: Zero ms delay between speech boxes
+                // INSTANT FIRE: Zero lag handshake
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
 
@@ -184,8 +184,8 @@ const Scriptread = () => {
             }
         };
 
-        const femaleTerms = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "princess", "queen", "ms", "mrs", "miss"];
-        const maleTerms = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "prince", "king", "mr"];
+        const femaleMarkers = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "ms", "mrs", "miss"];
+        const maleMarkers = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "mr"];
 
         lines.forEach((line, i) => {
             let text = line.text.trim();
@@ -196,7 +196,7 @@ const Scriptread = () => {
             const xPos = line.x || 0;
             const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
 
-            // CHARACTER BLOCK - PERSISTENT AUTO CAST logic preserved
+            // CHARACTER BLOCK - PERSISTENT AUTO CAST Logic
             if (isAllUpper && xPos > 180 && xPos < 330 && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
@@ -205,10 +205,11 @@ const Scriptread = () => {
                     if (!newVoiceMap[cleanName]) {
                         const scannerRange = lines.slice(Math.max(0, i - 5), i + 15).map(l => l.text.toLowerCase()).join(" ");
                         let score = 0; 
-                        femaleTerms.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score += 2; });
-                        maleTerms.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score -= 2; });
-                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 10;
-                        if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 10;
+                        femaleMarkers.forEach(m => { if (scannerRange.includes(m)) score += 3; });
+                        maleMarkers.forEach(m => { if (scannerRange.includes(m)) score -= 3; });
+                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 20;
+                        if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 20;
+
                         const pool = INWORLD_VOICES[score >= 0 ? 'female' : 'male'];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
                     }
@@ -219,12 +220,12 @@ const Scriptread = () => {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE")) {
+            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.length < 35) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
             else {
-                // FIXED ACTION BUFFERING: standard action margin keeps sentences together
+                // FIXED: Action Buffer now ignores mid-sentence PDF line breaks
                 actionBuffer += (actionBuffer ? " " : "") + text;
             }
         });
@@ -316,12 +317,12 @@ const Scriptread = () => {
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
                         <div className="p-4 bg-gray-50 rounded-xl border">
-                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                             <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                                 <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
