@@ -48,7 +48,6 @@ const Scriptread = () => {
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
     const prefetchBuffer = useRef(null);
-    const nextTimeoutRef = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -62,9 +61,10 @@ const Scriptread = () => {
             setIsBetaUser(true);
             setShowPaywall(false);
         }
-        const handleWelcome = () => handleFirstInteraction();
-        window.addEventListener('mousedown', handleWelcome);
-        return () => window.removeEventListener('mousedown', handleWelcome);
+        
+        const handleFirstInteractionOnPage = () => handleFirstInteraction();
+        window.addEventListener('mousedown', handleFirstInteractionOnPage);
+        return () => window.removeEventListener('mousedown', handleFirstInteractionOnPage);
     }, []);
 
     useEffect(() => {
@@ -101,7 +101,6 @@ const Scriptread = () => {
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
         prefetchBuffer.current = null;
-        if (nextTimeoutRef.current) clearTimeout(nextTimeoutRef.current);
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
@@ -144,7 +143,7 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // SEAMLESS HANDSHAKE: Use the pre-decoded buffer from the last turn
+            // Priority Handshake: Use prefetched buffer or fetch immediately
             let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
             prefetchBuffer.current = null; 
 
@@ -154,7 +153,7 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // PRE-LOAD NEXT LINE IMMEDIATELY WHILE THIS ONE PLAYS
+            // Immediate Preload of NEXT line in background
             if (index + 1 < segments.length) {
                 const nxt = segments[index + 1];
                 const nxtV = nxt.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxt.character] || "Abby");
@@ -163,17 +162,12 @@ const Scriptread = () => {
 
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
+                // Zero ms delay trigger
+                if (isPlayingRef.current) playSegment(index + 1); 
             };
 
             activeSource.current = source;
             source.start();
-
-            // THE LOOK-AHEAD TRIGGER: Fire next segment 250ms before current one ends
-            const durationMs = (buffer.duration * 1000) - 250;
-            nextTimeoutRef.current = setTimeout(() => {
-                if (isPlayingRef.current) playSegment(index + 1);
-            }, Math.max(0, durationMs));
-
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
@@ -214,8 +208,7 @@ const Scriptread = () => {
                         maleMarkers.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score -= 2; });
                         if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 10;
                         if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 10;
-                        const gender = score >= 0 ? 'female' : 'male';
-                        const pool = INWORLD_VOICES[gender];
+                        const pool = INWORLD_VOICES[score >= 0 ? 'female' : 'male'];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
                     }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
@@ -225,11 +218,12 @@ const Scriptread = () => {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.length < 35) {
+            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE")) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
             else {
+                // FIXED ACTION BUFFERING: standard action margin keeps sentences together
                 actionBuffer += (actionBuffer ? " " : "") + text;
             }
         });
