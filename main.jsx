@@ -61,12 +61,10 @@ const Scriptread = () => {
             setIsUnlocked(true);
             setIsBetaUser(true);
             setShowPaywall(false);
-            window.history.replaceState({}, document.title, window.location.pathname);
         }
-        
-        const handleWelcomeTrigger = () => handleFirstInteraction();
-        window.addEventListener('mousedown', handleWelcomeTrigger);
-        return () => window.removeEventListener('mousedown', handleWelcomeTrigger);
+        const handleWelcome = () => handleFirstInteraction();
+        window.addEventListener('mousedown', handleWelcome);
+        return () => window.removeEventListener('mousedown', handleWelcome);
     }, []);
 
     useEffect(() => {
@@ -138,10 +136,7 @@ const Scriptread = () => {
 
     const playSegment = async (index) => {
         const hasLock = isUnlocked || isBetaUser;
-        if (!isPlayingRef.current || index >= segments.length) {
-            if (index >= segments.length) stopAudio();
-            return;
-        }
+        if (!isPlayingRef.current || index >= segments.length) return;
         if (!hasLock && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); return; }
 
         setCurrentIdx(index);
@@ -149,7 +144,7 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // Priority Handshake: Use prefetched buffer or fetch immediately
+            // SEAMLESS HANDSHAKE: Use the pre-decoded buffer from the last turn
             let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
             prefetchBuffer.current = null; 
 
@@ -159,7 +154,7 @@ const Scriptread = () => {
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
             
-            // Background Preload next line instantly
+            // PRE-LOAD NEXT LINE IMMEDIATELY WHILE THIS ONE PLAYS
             if (index + 1 < segments.length) {
                 const nxt = segments[index + 1];
                 const nxtV = nxt.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxt.character] || "Abby");
@@ -173,8 +168,8 @@ const Scriptread = () => {
             activeSource.current = source;
             source.start();
 
-            // Conversation Flow Logic: Trigger next block 100ms before current ends
-            const durationMs = (buffer.duration * 1000) - 100;
+            // THE LOOK-AHEAD TRIGGER: Fire next segment 250ms before current one ends
+            const durationMs = (buffer.duration * 1000) - 250;
             nextTimeoutRef.current = setTimeout(() => {
                 if (isPlayingRef.current) playSegment(index + 1);
             }, Math.max(0, durationMs));
@@ -195,8 +190,8 @@ const Scriptread = () => {
             }
         };
 
-        const femaleMarkers = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "princess", "queen", "ms", "mrs", "miss"];
-        const maleMarkers = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "prince", "king", "mr"];
+        const femaleMarkers = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "ms", "mrs", "miss"];
+        const maleMarkers = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "mr"];
 
         lines.forEach((line, i) => {
             let text = line.text.trim();
@@ -207,24 +202,18 @@ const Scriptread = () => {
             const xPos = line.x || 0;
             const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
 
-            // CHARACTER DETECTION & REFINED AUTO-CAST
             if (isAllUpper && xPos > 180 && xPos < 330 && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
                     if (!newVoiceMap[cleanName]) {
-                        const scannerRange = lines.slice(Math.max(0, i - 2), i + 15).map(l => l.text.toLowerCase()).join(" ");
+                        const scannerRange = lines.slice(Math.max(0, i - 5), i + 15).map(l => l.text.toLowerCase()).join(" ");
                         let score = 0; 
-                        
-                        // Name Weighting
-                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM|SHE|HER/i.test(cleanName)) score += 15;
-                        if (/FRANK|ZACK|OLEG|DAD|HE|HIM|MR/i.test(cleanName)) score -= 15;
-
-                        // Context Weighting
-                        femaleMarkers.forEach(m => { if (scannerRange.includes(m)) score += 2; });
-                        maleMarkers.forEach(m => { if (scannerRange.includes(m)) score -= 2; });
-
+                        femaleMarkers.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score += 2; });
+                        maleMarkers.forEach(t => { if (new RegExp(`\\b${t}\\b`).test(scannerRange)) score -= 2; });
+                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 10;
+                        if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 10;
                         const gender = score >= 0 ? 'female' : 'male';
                         const pool = INWORLD_VOICES[gender];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
@@ -236,12 +225,11 @@ const Scriptread = () => {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.includes("CUT")) {
+            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.length < 35) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
             else {
-                // Persistent Sentence Joining: No mid-sentence breaks
                 actionBuffer += (actionBuffer ? " " : "") + text;
             }
         });
