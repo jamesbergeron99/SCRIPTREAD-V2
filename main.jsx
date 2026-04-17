@@ -48,6 +48,7 @@ const Scriptread = () => {
     const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
     const prefetchBuffer = useRef(null);
+    const nextTimeoutRef = useRef(null);
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const TRIAL_LIMIT = 120;
@@ -60,11 +61,12 @@ const Scriptread = () => {
             setIsUnlocked(true);
             setIsBetaUser(true);
             setShowPaywall(false);
+            window.history.replaceState({}, document.title, window.location.pathname);
         }
         
-        const triggerWelcome = () => handleFirstInteraction();
-        window.addEventListener('mousedown', triggerWelcome);
-        return () => window.removeEventListener('mousedown', triggerWelcome);
+        const handleWelcomeTrigger = () => handleFirstInteraction();
+        window.addEventListener('mousedown', handleWelcomeTrigger);
+        return () => window.removeEventListener('mousedown', handleWelcomeTrigger);
     }, []);
 
     useEffect(() => {
@@ -78,7 +80,6 @@ const Scriptread = () => {
     }, [currentIdx]);
 
     useEffect(() => {
-        // Only show paywall if NOT unlocked and NOT a beta user
         if (!isUnlocked && !isBetaUser && totalSeconds >= TRIAL_LIMIT) { 
             stopAudio(); 
             setShowPaywall(true); 
@@ -102,6 +103,7 @@ const Scriptread = () => {
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
         prefetchBuffer.current = null;
+        if (nextTimeoutRef.current) clearTimeout(nextTimeoutRef.current);
         if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
@@ -136,7 +138,10 @@ const Scriptread = () => {
 
     const playSegment = async (index) => {
         const hasLock = isUnlocked || isBetaUser;
-        if (!isPlayingRef.current || index >= segments.length) return;
+        if (!isPlayingRef.current || index >= segments.length) {
+            if (index >= segments.length) stopAudio();
+            return;
+        }
         if (!hasLock && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); return; }
 
         setCurrentIdx(index);
@@ -144,26 +149,36 @@ const Scriptread = () => {
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
 
         try {
-            // High Priority Prefetch
+            // Priority Handshake: Use prefetched buffer or fetch immediately
+            let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
+            prefetchBuffer.current = null; 
+
+            if (!isPlayingRef.current) return;
+
+            const source = audioContext.current.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.current.destination);
+            
+            // Background Preload next line instantly
             if (index + 1 < segments.length) {
                 const nxt = segments[index + 1];
                 const nxtV = nxt.type === 'narrator' ? voiceMap.Narrator : (voiceMap[nxt.character] || "Abby");
                 fetchAudio(nxt.text, nxtV).then(b => { prefetchBuffer.current = b; });
             }
 
-            let buffer = prefetchBuffer.current || await fetchAudio(seg.text, voice);
-            prefetchBuffer.current = null; 
-
-            if (!isPlayingRef.current) return;
-            const source = audioContext.current.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioContext.current.destination);
             source.onended = () => { 
                 setTotalSeconds(prev => prev + buffer.duration);
-                if (isPlayingRef.current) playSegment(index + 1); 
             };
+
             activeSource.current = source;
             source.start();
+
+            // Conversation Flow Logic: Trigger next block 100ms before current ends
+            const durationMs = (buffer.duration * 1000) - 100;
+            nextTimeoutRef.current = setTimeout(() => {
+                if (isPlayingRef.current) playSegment(index + 1);
+            }, Math.max(0, durationMs));
+
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
@@ -192,20 +207,26 @@ const Scriptread = () => {
             const xPos = line.x || 0;
             const isSlugline = text.startsWith("INT") || text.startsWith("EXT");
 
-            // CHARACTER BLOCK - Working Auto-Cast Logic
+            // CHARACTER DETECTION & REFINED AUTO-CAST
             if (isAllUpper && xPos > 180 && xPos < 330 && text.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(text)) {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
                     foundChars.add(cleanName);
                     if (!newVoiceMap[cleanName]) {
-                        const scannerRange = lines.slice(Math.max(0, i - 5), i + 15).map(l => l.text.toLowerCase()).join(" ");
+                        const scannerRange = lines.slice(Math.max(0, i - 2), i + 15).map(l => l.text.toLowerCase()).join(" ");
                         let score = 0; 
-                        femaleMarkers.forEach(t => { if (scannerRange.includes(t)) score += 2; });
-                        maleMarkers.forEach(t => { if (scannerRange.includes(t)) score -= 2; });
-                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 10;
-                        if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 10;
-                        const pool = INWORLD_VOICES[score >= 0 ? 'female' : 'male'];
+                        
+                        // Name Weighting
+                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM|SHE|HER/i.test(cleanName)) score += 15;
+                        if (/FRANK|ZACK|OLEG|DAD|HE|HIM|MR/i.test(cleanName)) score -= 15;
+
+                        // Context Weighting
+                        femaleMarkers.forEach(m => { if (scannerRange.includes(m)) score += 2; });
+                        maleMarkers.forEach(m => { if (scannerRange.includes(m)) score -= 2; });
+
+                        const gender = score >= 0 ? 'female' : 'male';
+                        const pool = INWORLD_VOICES[gender];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
                     }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
@@ -215,12 +236,12 @@ const Scriptread = () => {
                 const cleanDiag = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanDiag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + cleanDiag;
             } 
-            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE")) {
+            else if (isSlugline || text.includes("Written by") || text.includes("@") || text.includes("FADE") || text.includes("CUT")) {
                 flushAction();
                 finalBlocks.push({ type: 'narrator', text: text });
             }
             else {
-                // GREEDY ACTION BUFFERING: Captures all lines until a Character/Slugline flush
+                // Persistent Sentence Joining: No mid-sentence breaks
                 actionBuffer += (actionBuffer ? " " : "") + text;
             }
         });
