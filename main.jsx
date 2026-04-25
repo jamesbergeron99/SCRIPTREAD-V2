@@ -47,7 +47,7 @@ const Scriptread = () => {
     const decodedCache = useRef({});
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
-    const TRIAL_LIMIT = 120;
+    const TRIAL_LIMIT = 120; // 2 Minute Sample
     const MAX_PAGES = 120;
 
     useEffect(() => {
@@ -67,6 +67,7 @@ const Scriptread = () => {
         if (segments.length > 0) preloadFuture(currentIdx + 1);
     }, [currentIdx, segments]);
 
+    // ENFORCED GLOBAL PAYWALL WATCHER
     useEffect(() => {
         if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { 
             stopAudio(); 
@@ -98,8 +99,12 @@ const Scriptread = () => {
     };
 
     const stopAudio = () => {
-        isPlayingRef.current = false; setIsPlaying(false);
-        if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
+        isPlayingRef.current = false; 
+        setIsPlaying(false);
+        if (activeSource.current) { 
+            try { activeSource.current.stop(); } catch(e) {} 
+            activeSource.current = null; 
+        }
     };
 
     const fetchAudio = async (text, voiceId) => {
@@ -132,9 +137,14 @@ const Scriptread = () => {
     };
 
     const playSegment = async (index) => {
-        if (!isPlayingRef.current || index >= segments.length) return;
-        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); return; }
+        // Double check lock state immediately
+        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) {
+            stopAudio();
+            setShowPaywall(true);
+            return;
+        }
 
+        if (!isPlayingRef.current || index >= segments.length) return;
         setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
@@ -215,6 +225,7 @@ const Scriptread = () => {
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
         setCurrentIdx(-1);
+        setTotalSeconds(0);
         decodedCache.current = {};
     };
 
@@ -260,22 +271,22 @@ const Scriptread = () => {
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
-                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center animate-in fade-in duration-500">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
                         <div className="flex justify-center mb-6"><LogoIcon size="64" /></div>
-                        <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Support your script</h2>
-                        <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold leading-relaxed italic">Create professional sounding table reads for less than a cup of coffee.</p>
+                        <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Sample Limit Reached</h2>
+                        <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold leading-relaxed italic">Enjoying your table read? Unlock the full script and high-quality audio downloads for the price of a coffee.</p>
                         
-                        <div className="flex flex-col items-center">
+                        <div className="flex flex-col items-center py-4">
                             <style dangerouslySetInnerHTML={{__html: `.pp-QVTMH7RF7NUBE{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}`}} />
                             <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank" style={{display:'inline-grid', justifyItems:'center', alignContent:'start', gap:'0.5rem'}}>
-                                <input className="pp-QVTMH7RF7NUBE" type="submit" value="Buy Now" />
+                                <input className="pp-QVTMH7RF7NUBE" type="submit" value="Unlock Script - $2.99" />
                                 <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
                                 <section style={{fontSize: '0.75rem'}}> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style={{height:'0.875rem', verticalAlign:'middle'}}/></section>
                             </form>
                         </div>
 
-                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors">Maybe Later</button>
+                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors underline">Return to Sample</button>
                     </div>
                 </div>
             )}
@@ -283,7 +294,7 @@ const Scriptread = () => {
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
-                    <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 tracking-widest italic">
+                    <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 tracking-widest italic shadow-sm">
                         {isUnlocked ? "Full Access" : `Preview: ${Math.round(totalSeconds)}s / 120s`}
                     </div>
                 </div>
@@ -310,22 +321,22 @@ const Scriptread = () => {
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-hidden">
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-widest">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
-                        <div className="p-4 bg-gray-50 rounded-xl border">
-                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
+                        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-600 transition-colors" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
-                            <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
+                            <div key={char} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none focus:border-black transition-colors" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
                     </div>
                 </aside>
-                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
+                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 scrollbar-thin">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter italic">Welcome to Scriptread Pro</h2><p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional sounding table reads for less than a cup of coffee.</p></div>
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2><p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional sounding table reads for less than a cup of coffee.</p></div>
                         ) : (
                             <div className="space-y-6 pb-[50vh]">{segments.map((seg, i) => (<div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>{seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}<p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p></div>))}</div>
                         )}
