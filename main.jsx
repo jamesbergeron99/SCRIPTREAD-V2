@@ -179,7 +179,6 @@ const Scriptread = () => {
             
             const x = lines[i].x || 0;
 
-            // STEP 2 — SAFE INLINE DETECTION
             const inlineMatch = t.match(/^([A-Z]{2,})\s+([A-Z]?[a-z].*)$/);
             if (inlineMatch && t.length < 150 && !t.startsWith("INT") && !t.startsWith("EXT")) {
                 const possibleName = inlineMatch[1];
@@ -187,23 +186,25 @@ const Scriptread = () => {
                     flush();
                     currentSpeaker = possibleName;
 
-                    if (!charOccurrenceIndices.has(possibleName)) {
-                        charOccurrenceIndices.set(possibleName, []);
+                    // STEP 2 & 3: VALIDATE DIALOGUE AND ADD CHARACTER ONLY THEN
+                    const dialogueText = inlineMatch[2];
+                    if (dialogueText && dialogueText.trim().length > 2) {
+                        if (!charOccurrenceIndices.has(possibleName)) {
+                            charOccurrenceIndices.set(possibleName, []);
+                        }
+                        charOccurrenceIndices.get(possibleName).push(i);
                     }
-
-                    charOccurrenceIndices.get(possibleName).push(i);
 
                     finalBlocks.push({
                         type: 'dialogue',
                         character: possibleName,
-                        text: inlineMatch[2]
+                        text: dialogueText
                     });
 
                     continue;
                 }
             }
 
-            // Normal character detection logic (STEP 3: KEEP EXISTING)
             const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             let isChar = false;
             let cleanName = "";
@@ -222,11 +223,9 @@ const Scriptread = () => {
             if (isChar) {
                 flush();
                 currentSpeaker = cleanName;
-                if (!charOccurrenceIndices.has(cleanName)) charOccurrenceIndices.set(cleanName, []);
-                charOccurrenceIndices.get(cleanName).push(i);
+                // REMOVED STEP 1: EARLY CHARACTER ADDING (charOccurrenceIndices push removed)
                 finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
             } 
-            // STEP 4 — ENSURE DIALOGUE ONLY CONTINUES PROPERLY
             else if (currentSpeaker) {
                 const isParenthetical = t.startsWith("(") && t.endsWith(")");
                 const isUpperLine = t === t.toUpperCase() && /[A-Z]/.test(t);
@@ -235,8 +234,17 @@ const Scriptread = () => {
 
                 if (isParenthetical || (!isUpperLine && inRange && isShort)) {
                     finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + t;
-                    if (charOccurrenceIndices.has(currentSpeaker)) {
-                        charOccurrenceIndices.get(currentSpeaker).push(i);
+                    
+                    // STEP 2 & 3: ADD CHARACTERS ONLY AFTER VALID DIALOGUE EXISTS
+                    const currentBlock = finalBlocks[finalBlocks.length - 1];
+                    if (currentBlock.text && currentBlock.text.trim().length > 2) {
+                        if (!charOccurrenceIndices.has(currentSpeaker)) {
+                            charOccurrenceIndices.set(currentSpeaker, []);
+                        }
+                        // Avoid pushing the same line index multiple times if dialogue spans lines
+                        if (!charOccurrenceIndices.get(currentSpeaker).includes(i)) {
+                            charOccurrenceIndices.get(currentSpeaker).push(i);
+                        }
                     }
                 } else {
                     currentSpeaker = null;
@@ -249,7 +257,15 @@ const Scriptread = () => {
         }
         flush();
 
-        const detectedCharacters = Array.from(charOccurrenceIndices.keys());
+        // STEP 4 — FILTER FINAL CHARACTER LIST
+        const detectedCharacters = Array.from(charOccurrenceIndices.keys()).filter(name => {
+            return finalBlocks.some(b =>
+                b.type === 'dialogue' &&
+                b.character === name &&
+                b.text &&
+                b.text.trim().length > 2
+            );
+        });
 
         const globalEvidence = {};
         detectedCharacters.forEach(name => {
