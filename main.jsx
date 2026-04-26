@@ -3,16 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const INWORLD_VOICES = {
-    narrators: [
-        { id: "Serena", name: "Serena" },
-        { id: "Selene", name: "Selene" },
-        { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
-    ],
-    custom: [
-        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-1289100c", name: "Daneeka" },
-        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-045a5de4", name: "Zack" },
-        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-30af450b", name: "Oleg" }
-    ],
+    narrators: [{ id: "Serena", name: "Serena" }, { id: "Selene", name: "Selene" }, { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }],
     female: [
         { id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Anjali", name: "Anjali" }, { id: "Ashley", name: "Ashley" }, { id: "Bianca", name: "Bianca" }, { id: "Celeste", name: "Celeste" }, { id: "Chloe", name: "Chloe" }, { id: "Claire", name: "Claire" }, { id: "Darlene", name: "Darlene" }, { id: "Deborah", name: "Deborah" }, { id: "Eleanor", name: "Eleanor" }, { id: "Evelyn", name: "Evelyn" }, { id: "Hana", name: "Hana" }, { id: "Jessica", name: "Jessica" }, { id: "Kelsey", name: "Kelsey" }, { id: "Lauren", name: "Lauren" }, { id: "Leda", name: "Leda" }, { id: "Loretta", name: "Loretta" }, { id: "Luna", name: "Luna" }, { id: "Marlene", name: "Marlene" }, { id: "Mia", name: "Mia" }, { id: "Miranda", name: "Miranda" }, { id: "Nadia", name: "Nadia" }, { id: "Naomi", name: "Naomi" }, { id: "Olivia", name: "Olivia" }, { id: "Pippa", name: "Pippa" }, { id: "Pixie", name: "Pixie" }, { id: "Riley", name: "Riley" }, { id: "Saanvi", name: "Saanvi" }, { id: "Sarah", name: "Sarah" }, { id: "Serena", name: "Serena" }, { id: "Sophie", name: "Sophie" }, { id: "Tessa", name: "Tessa" }, { id: "Veronica", name: "Veronica" }, { id: "Victoria", name: "Victoria" }
     ],
@@ -24,7 +15,6 @@ const INWORLD_VOICES = {
 const LogoIcon = ({ size = "40", color = "#2563eb" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M7 11.5C7.5 12.5 8.5 13.5 10 14M14 14C15.5 13.5 16.5 12.5 17 11.5" stroke={color} strokeWidth="2" strokeLinecap="round"/>
     </svg>
 );
 
@@ -54,33 +44,30 @@ const Scriptread = () => {
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const isPaid = params.get('status') === 'success' || localStorage.getItem('scriptread_paid_vFinal') === 'true';
+        const isPaid = params.get('status') === 'success' || localStorage.getItem('sr_paid_final_v1') === 'true';
         if (isPaid) {
             setIsUnlocked(true); setShowPaywall(false); setTotalSeconds(-99999);
-            localStorage.setItem('scriptread_paid_vFinal', 'true');
+            localStorage.setItem('sr_paid_final_v1', 'true');
             if (params.get('status')) window.history.replaceState({}, document.title, window.location.pathname);
         }
-
-        const savedScript = sessionStorage.getItem('final_script');
-        const savedChars = sessionStorage.getItem('final_chars');
-        const savedMap = sessionStorage.getItem('final_map');
-
-        if (savedScript && savedChars && savedMap) {
-            setSegments(JSON.parse(savedScript));
-            setCharacters(JSON.parse(savedChars));
-            setVoiceMap(JSON.parse(savedMap));
+        const s_seg = sessionStorage.getItem('sr_seg_final');
+        const s_char = sessionStorage.getItem('sr_char_final');
+        const s_map = sessionStorage.getItem('sr_map_final');
+        if (s_seg && s_char && s_map) {
+            setSegments(JSON.parse(s_seg));
+            setCharacters(JSON.parse(s_char));
+            setVoiceMap(JSON.parse(s_map));
         }
-
-        const firstClick = () => handleFirstInteraction();
-        window.addEventListener('mousedown', firstClick);
-        return () => window.removeEventListener('mousedown', firstClick);
+        const welcome = () => handleFirstInteraction();
+        window.addEventListener('mousedown', welcome);
+        return () => window.removeEventListener('mousedown', welcome);
     }, []);
 
     useEffect(() => {
         if (segments.length > 0) {
-            sessionStorage.setItem('final_script', JSON.stringify(segments));
-            sessionStorage.setItem('final_chars', JSON.stringify(characters));
-            sessionStorage.setItem('final_map', JSON.stringify(voiceMap));
+            sessionStorage.setItem('sr_seg_final', JSON.stringify(segments));
+            sessionStorage.setItem('sr_char_final', JSON.stringify(characters));
+            sessionStorage.setItem('sr_map_final', JSON.stringify(voiceMap));
         }
     }, [segments, characters, voiceMap]);
 
@@ -115,17 +102,6 @@ const Scriptread = () => {
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
     };
 
-    const auditionVoice = async (voiceId, charName) => {
-        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        try {
-            const buffer = await fetchAudio(`Auditioning for the role of ${charName}.`, voiceId);
-            const source = audioContext.current.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioContext.current.destination);
-            source.start();
-        } catch (e) {}
-    };
-
     const playSegment = async (index) => {
         if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); return; }
         if (!isPlayingRef.current || index >= segments.length) return;
@@ -144,21 +120,8 @@ const Scriptread = () => {
             };
             activeSource.current = source;
             source.start();
+            preloadFuture(index + 1);
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
-    };
-
-    const handleFirstInteraction = async () => {
-        if (hasGreetedRef.current) return;
-        hasGreetedRef.current = true;
-        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        const msg = "Welcome to Script reed Pro. Your AI Casting Director is ready.";
-        try {
-            const buffer = await fetchAudio(msg, "Serena");
-            const source = audioContext.current.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioContext.current.destination);
-            source.start();
-        } catch (err) { hasGreetedRef.current = false; }
     };
 
     const preloadFuture = async (startIdx) => {
@@ -170,22 +133,36 @@ const Scriptread = () => {
         }
     };
 
-    // --- THE "BRAIN" PROTOCOL ---
-    const analyzeScriptForGenders = async (charDataList) => {
+    const handleFirstInteraction = async () => {
+        if (hasGreetedRef.current) return;
+        hasGreetedRef.current = true;
+        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
+        const msg = "Welcome to Script reed Pro. I'm casting your script with AI accuracy.";
+        try {
+            const buffer = await fetchAudio(msg, "Serena");
+            const source = audioContext.current.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.current.destination);
+            source.start();
+        } catch (err) { hasGreetedRef.current = false; }
+    };
+
+    // --- BRAIN ENGINE: DEEP SCRUTINY ---
+    const analyzeCharacterGenders = async (charList) => {
         if (!GEMINI_KEY) return null;
         setIsAnalyzing(true);
         try {
             const genAI = new GoogleGenerativeAI(GEMINI_KEY);
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const prompt = `You are a Casting Director. Read the following Character Names and the Evidence from the script (action lines and dialogue surrounding their first appearance). 
+            Determine if each character is 'male' or 'female'. 
+            PRIORITIZE PRONOUNS (he, she, his, hers) and DESCRIPTIVE NOUNS (man, lady, boy, girl).
             
-            const prompt = `Act as an expert Script Casting Director. Your job is to read character names and the context of their dialogue and action lines to determine their gender. 
-            Ignore the character name if the text uses pronouns like "he" or "him" for a feminine name, or "she" or "her" for a masculine name.
+            EVIDENCE:
+            ${charList.map(c => `- NAME: ${c.name} | EVIDENCE: "${c.evidence}"`).join("\n")}
             
-            Characters and Evidence:
-            ${charDataList.map(c => `- ${c.name}: introduced in context "${c.evidence}"`).join("\n")}
+            RETURN ONLY A RAW JSON OBJECT: {"Name": "male/female"}. No other text.`;
             
-            RETURN ONLY A RAW JSON OBJECT. Keys are Character Names. Values are either "male" or "female".`;
-
             const result = await model.generateContent(prompt);
             const text = result.response.text().replace(/```json|```/g, "").trim();
             return JSON.parse(text);
@@ -195,7 +172,7 @@ const Scriptread = () => {
 
     const parseScript = async (lines) => {
         const finalBlocks = [];
-        const foundChars = new Map();
+        const charEvidenceMap = new Map();
         let actionBuffer = "";
         const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
 
@@ -209,9 +186,9 @@ const Scriptread = () => {
                 flush();
                 const name = t.replace(/\([^)]*\)/g, "").trim();
                 if (name) {
-                    if (!foundChars.has(name)) {
-                        const context = lines.slice(Math.max(0, i-5), i+15).map(l => l.text).join(" ");
-                        foundChars.set(name, context);
+                    if (!charEvidenceMap.has(name)) {
+                        const evidence = lines.slice(Math.max(0, i-8), i+15).map(l => l.text).join(" ");
+                        charEvidenceMap.set(name, evidence);
                     }
                     finalBlocks.push({ type: 'dialogue', character: name, text: "" });
                 }
@@ -227,25 +204,24 @@ const Scriptread = () => {
         });
         flush();
 
-        // BLOCKING UI WHILE BRAIN WORKS
-        const charEvidenceList = Array.from(foundChars.entries()).map(([name, evidence]) => ({ name, evidence }));
-        const aiCasting = await analyzeScriptForGenders(charEvidenceList);
+        const evidenceArray = Array.from(charEvidenceMap.entries()).map(([name, evidence]) => ({ name, evidence }));
+        const aiCastingResults = await analyzeCharacterGenders(evidenceArray);
 
         let newMap = { Narrator: "Serena" };
-        foundChars.forEach((_, name) => {
+        charEvidenceMap.forEach((_, name) => {
             let gender = 'female';
-            if (aiCasting && aiCasting[name]) {
-                gender = aiCasting[name].toLowerCase().includes('male') ? 'male' : 'female';
+            if (aiCastingResults && aiCastingResults[name]) {
+                gender = aiCastingResults[name].toLowerCase().includes('male') ? 'male' : 'female';
             } else {
-                const evidence = (foundChars.get(name) || "").toLowerCase();
-                if (/\b(he|him|his|man|father|husband|mr|guy)\b/.test(evidence)) gender = 'male';
+                const evidence = (charEvidenceMap.get(name) || "").toLowerCase();
+                if (/\b(he|him|his|man|father|boy|husband|mr)\b/.test(evidence)) gender = 'male';
             }
             const pool = INWORLD_VOICES[gender];
             newMap[name] = pool[Math.floor(Math.random() * pool.length)].id;
         });
 
         setVoiceMap(newMap);
-        setCharacters(Array.from(foundChars.keys()).sort());
+        setCharacters(Array.from(charEvidenceMap.keys()).sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
         setCurrentIdx(-1);
     };
@@ -281,10 +257,10 @@ const Scriptread = () => {
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {isAnalyzing && (
-                <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-blue-600 text-white backdrop-blur-lg">
-                    <div className="animate-spin rounded-full h-20 w-20 border-8 border-white border-t-transparent mb-8"></div>
+                <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-blue-600 text-white backdrop-blur-xl">
+                    <div className="animate-spin rounded-full h-24 w-24 border-8 border-white border-t-transparent mb-8"></div>
                     <h2 className="text-4xl font-black uppercase italic tracking-tighter">AI Character Brain Scan</h2>
-                    <p className="font-bold uppercase text-sm opacity-80 mt-4 tracking-widest animate-pulse">Reading Action Lines for Accurate Genders...</p>
+                    <p className="font-bold uppercase text-xs opacity-80 mt-4 tracking-widest animate-pulse">Reading Action Lines for Accurate Genders...</p>
                 </div>
             )}
             {showPaywall && (
@@ -313,7 +289,7 @@ const Scriptread = () => {
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
-                        {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
+                        {isExporting ? "Exporting..." : "Master WAV"}
                     </button>
                     <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
@@ -331,7 +307,7 @@ const Scriptread = () => {
             </header>
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-hidden">
-                    <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-widest italic font-bold">Production Cast</div>
+                    <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-widest italic">Production Cast</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin">
                         <div className="p-4 bg-gray-50 rounded-xl border">
                             <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Narrator</p>
@@ -341,7 +317,7 @@ const Scriptread = () => {
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
                                 <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
                                     <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
@@ -353,7 +329,7 @@ const Scriptread = () => {
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 scrollbar-thin">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2></div>
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter italic">Welcome to Scriptread Pro</h2></div>
                         ) : (
                             <div className="space-y-6 pb-[50vh]">{segments.map((seg, i) => (<div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>{seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}<p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p></div>))}</div>
                         )}
@@ -362,7 +338,7 @@ const Scriptread = () => {
             </div>
             <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m11 17-5-5 5-5m7 10-5-5 5-5"/></svg></button>
-                <button onClick={() => { if (isPlaying) stopAudio(); else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">{isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}</button>
+                <button onClick={() => { if (isPlaying) stopAudio(); else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl">{isPlaying ? "PAUSE" : "PLAY"}</button>
                 <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
             </footer>
         </div>
