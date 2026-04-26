@@ -174,50 +174,40 @@ const Scriptread = () => {
         const invalid = /^(INT|EXT|DAY|NIGHT|CUT|FADE|ACT|SCENE|ROOM|THE END|CONTINUED|BACK TO|KITCHEN|HALLWAY|BEDROOM)/i;
 
         for (let i = 0; i < lines.length; i++) {
-            if (i < 10) {
-                actionBuffer += (actionBuffer ? " " : "") + lines[i].text.trim();
-                continue;
-            }
-
             let t = lines[i].text.trim();
             if (!t || /^(\d+|Page \d+)$/i.test(t)) continue;
             
-            const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             const x = lines[i].x || 0;
 
-            // STEP 1 & 2 — DETECT INLINE DIALOGUE
-            const parts = t.split(" ");
-            const possibleName = parts[0].replace(/[^a-zA-Z]/g, "");
-            const remainingText = parts.slice(1).join(" ");
-            const isInlinePossible = 
-                parts.length > 1 && 
-                possibleName === possibleName.toUpperCase() && 
-                possibleName.length > 1 &&
-                possibleName.length < 15 &&
-                !invalid.test(possibleName) &&
-                !t.startsWith("INT") &&
-                !t.startsWith("EXT") &&
-                t.length < 250;
+            // STEP 2 — SAFE INLINE DETECTION
+            const inlineMatch = t.match(/^([A-Z]{2,})\s+([A-Z]?[a-z].*)$/);
+            if (inlineMatch && t.length < 150 && !t.startsWith("INT") && !t.startsWith("EXT")) {
+                const possibleName = inlineMatch[1];
+                if (!invalid.test(possibleName)) {
+                    flush();
+                    currentSpeaker = possibleName;
 
+                    if (!charOccurrenceIndices.has(possibleName)) {
+                        charOccurrenceIndices.set(possibleName, []);
+                    }
+
+                    charOccurrenceIndices.get(possibleName).push(i);
+
+                    finalBlocks.push({
+                        type: 'dialogue',
+                        character: possibleName,
+                        text: inlineMatch[2]
+                    });
+
+                    continue;
+                }
+            }
+
+            // Normal character detection logic (STEP 3: KEEP EXISTING)
+            const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             let isChar = false;
             let cleanName = "";
 
-            if (isInlinePossible && /[a-z]/.test(remainingText)) {
-                // STEP 3 — CREATE INLINE DIALOGUE BLOCK
-                flush();
-                cleanName = possibleName;
-                currentSpeaker = cleanName;
-                if (!charOccurrenceIndices.has(cleanName)) charOccurrenceIndices.set(cleanName, []);
-                charOccurrenceIndices.get(cleanName).push(i);
-                finalBlocks.push({
-                    type: 'dialogue',
-                    character: cleanName,
-                    text: remainingText
-                });
-                continue; // Move to next line
-            }
-
-            // Normal character detection logic
             if (isUpper && x > 210 && x < 320 && t.length < 25 && !invalid.test(t)) {
                 cleanName = t.replace(/\([^)]*\)/g, "").replace(/[^a-zA-Z0-9\s]/g, "").trim();
                 for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
@@ -236,6 +226,7 @@ const Scriptread = () => {
                 charOccurrenceIndices.get(cleanName).push(i);
                 finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
             } 
+            // STEP 4 — ENSURE DIALOGUE ONLY CONTINUES PROPERLY
             else if (currentSpeaker) {
                 const isParenthetical = t.startsWith("(") && t.endsWith(")");
                 const isUpperLine = t === t.toUpperCase() && /[A-Z]/.test(t);
