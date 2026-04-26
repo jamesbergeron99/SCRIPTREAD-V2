@@ -52,6 +52,7 @@ const Scriptread = () => {
         if (isPaid) {
             setIsUnlocked(true); setShowPaywall(false); setTotalSeconds(-99999);
             localStorage.setItem('sr_full_access', 'true');
+            if (params.get('status')) window.history.replaceState({}, document.title, window.location.pathname);
         }
         const s_seg = sessionStorage.getItem('sr_cache_seg');
         const s_char = sessionStorage.getItem('sr_cache_char');
@@ -165,11 +166,12 @@ const Scriptread = () => {
 
     const parseScript = async (lines) => {
         const finalBlocks = [];
-        const charEvidence = new Map();
+        const charOccurrenceIndices = new Map(); // Name -> Array of line indices
         let actionBuffer = "";
         const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
         const invalid = /^(INT|EXT|DAY|NIGHT|CUT|FADE|ACT|SCENE|ROOM|THE END|CONTINUED|BACK TO|KITCHEN|HALLWAY|BEDROOM)/i;
 
+        // Character Detection and Dialogue Assignment
         for (let i = 0; i < lines.length; i++) {
             let t = lines[i].text.trim();
             if (!t || /^(\d+|Page \d+)$/i.test(t)) continue;
@@ -192,73 +194,101 @@ const Scriptread = () => {
 
             if (isChar) {
                 flush();
-                if (!charEvidence.has(cleanName)) {
-                    charEvidence.set(cleanName, lines.slice(i, i+15).map(l => l.text).join(" "));
-                }
+                if (!charOccurrenceIndices.has(cleanName)) charOccurrenceIndices.set(cleanName, []);
+                charOccurrenceIndices.get(cleanName).push(i);
                 finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
             } else if (x > 100 && x < 450 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length-1].type === 'dialogue') {
                 finalBlocks[finalBlocks.length-1].text += (finalBlocks[finalBlocks.length-1].text ? " " : "") + t;
+                // Add index of dialogue line to evidence list
+                const currentChar = finalBlocks[finalBlocks.length-1].character;
+                if (charOccurrenceIndices.has(currentChar)) charOccurrenceIndices.get(currentChar).push(i);
             } else {
                 actionBuffer += (actionBuffer ? " " : "") + t;
             }
         }
         flush();
 
-        // --- START OF MODIFIED CASTING LOGIC ---
-        const charEvidenceArray = Array.from(charEvidence.entries()).map(([name, evidence]) => ({ name, evidence }));
+        const detectedCharacters = Array.from(charOccurrenceIndices.keys());
+
+        // STEP 1 — BUILD GLOBAL EVIDENCE MAP
+        const globalEvidence = {};
+        detectedCharacters.forEach(name => {
+            const indices = charOccurrenceIndices.get(name) || [];
+            const collectedLines = new Set();
+            
+            indices.forEach(idx => {
+                // Collect character appearance/dialogue line + nearby lines (±2 lines)
+                for (let k = Math.max(0, idx - 2); k <= Math.min(idx + 2, lines.length - 1); k++) {
+                    collectedLines.add(lines[k].text);
+                }
+            });
+            globalEvidence[name] = Array.from(collectedLines).join(" ");
+        });
+
+        // STEP 4 — IMPROVE GEMINI INPUT
+        const charEvidenceArray = detectedCharacters.map(name => ({
+            name,
+            evidence: globalEvidence[name] || ""
+        }));
+        
         const aiCastingResults = await analyzeCharacterGenders(charEvidenceArray);
+
         // Normalize Gemini keys to Uppercase for reliable matching
         const normalizedAiResults = {};
         if (aiCastingResults) {
-        Object.keys(aiCastingResults).forEach(key => {
-        normalizedAiResults[key.toUpperCase()] = aiCastingResults[key].toLowerCase();
-        });
+            Object.keys(aiCastingResults).forEach(key => {
+                normalizedAiResults[key.toUpperCase()] = aiCastingResults[key].toLowerCase();
+            });
         }
+
         const maleNames = ["ROBERT", "MICHAEL", "JAMES", "DAVID", "JOHN", "FRANK", "ZACK", "OLEG", "RICHARD", "SIMON", "PETER", "STEVE", "GARY", "MIKE", "CHRIS", "MARK", "PAUL", "KEVIN", "JASON", "BRIAN"];
         const femaleNames = ["DEE", "DANICA", "SARAH", "JESSICA", "AMY", "FELICITY", "TULIP", "MARY", "LINDA", "SUSAN", "BARBARA", "KAREN", "EMILY", "KATHY", "LISA", "NANCY", "BETTY", "SANDRA"];
+
         let newMap = { ...voiceMap };
-        charEvidence.forEach((_, name) => {
-        const upperName = name.toUpperCase();
-        const evidenceText = (charEvidence.get(name) || "").toLowerCase();
-        let gender = null;
-        // 1. Gemini Result
-        if (normalizedAiResults[upperName]) {
-            gender = normalizedAiResults[upperName].includes('male') && !normalizedAiResults[upperName].includes('female') ? 'male' : 'female';
-        }
+        detectedCharacters.forEach((name) => {
+            const upperName = name.toUpperCase();
+            // STEP 2 — REPLACE LOCAL EVIDENCE
+            const evidenceText = (globalEvidence[name] || "").toLowerCase();
+            let gender = null;
 
-        // 2. Pronoun Detection
-        if (!gender) {
-            const maleMatch = evidenceText.match(/\b(he|him|his|man|father|boy|mr|guy)\b/g);
-            const femaleMatch = evidenceText.match(/\b(she|her|hers|woman|girl|mother|ms|mrs|lady)\b/g);
-            if (maleMatch && (!femaleMatch || maleMatch.length > femaleMatch.length)) gender = 'male';
-            else if (femaleMatch && (!maleMatch || femaleMatch.length > maleMatch.length)) gender = 'female';
-        }
-
-        // 3. Name Detection
-        if (!gender) {
-            if (maleNames.includes(upperName)) gender = 'male';
-            else if (femaleNames.includes(upperName)) gender = 'female';
-            else {
-                if (upperName.endsWith('A') || upperName.endsWith('IE') || upperName.endsWith('Y') || upperName.endsWith('AH')) gender = 'female';
-                else if (/[ORNDLKM]$/.test(upperName)) gender = 'male';
+            // 1. Gemini Result
+            if (normalizedAiResults[upperName]) {
+                gender = normalizedAiResults[upperName].includes('male') && !normalizedAiResults[upperName].includes('female') ? 'male' : 'female';
             }
-        }
 
-        // 4. Deterministic fallback
-        const nameHash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        if (!gender) {
-            gender = nameHash % 2 === 0 ? 'male' : 'female';
-        }
+            // 2. Pronoun Detection (Now boosted by Global Evidence)
+            if (!gender) {
+                const maleMatch = evidenceText.match(/\b(he|him|his|man|father|boy|mr|guy)\b/g);
+                const femaleMatch = evidenceText.match(/\b(she|her|hers|woman|girl|mother|ms|mrs|lady)\b/g);
+                if (maleMatch && (!femaleMatch || maleMatch.length > femaleMatch.length)) gender = 'male';
+                else if (femaleMatch && (!maleMatch || femaleMatch.length > maleMatch.length)) gender = 'female';
+            }
 
-        // 5. Voice assignment
-        const pool = INWORLD_VOICES[gender];
-        newMap[name] = pool[nameHash % pool.length].id;
+            // 3. Name Detection
+            if (!gender) {
+                if (maleNames.includes(upperName)) gender = 'male';
+                else if (femaleNames.includes(upperName)) gender = 'female';
+                else {
+                    if (upperName.endsWith('A') || upperName.endsWith('IE') || upperName.endsWith('Y') || upperName.endsWith('AH')) gender = 'female';
+                    else if (/[ORNDLKM]$/.test(upperName)) gender = 'male';
+                }
+            }
+
+            // 4. Deterministic fallback
+            const nameHash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            if (!gender) {
+                gender = nameHash % 2 === 0 ? 'male' : 'female';
+            }
+
+            // 5. Voice assignment
+            const pool = INWORLD_VOICES[gender];
+            newMap[name] = pool[nameHash % pool.length].id;
         });
+
         setVoiceMap(newMap);
-        setCharacters(Array.from(charEvidence.keys()).sort());
+        setCharacters(detectedCharacters.sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
         setCurrentIdx(-1);
-        // --- END OF MODIFIED CASTING LOGIC ---
     };
 
     const masterAndExport = async () => {
@@ -312,8 +342,8 @@ const Scriptread = () => {
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shrink-0 z-50">
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
-                    <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
-                    <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 italic shadow-sm">
+                    <h1 className="text-3xl font-black uppercase italic tracking-tight italic">Scriptread <span className="text-blue-600">Pro</span></h1>
+                    <div className={`${isUnlocked ? 'bg-green-600' : 'bg-blue-600'} text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 italic shadow-sm`}>
                         {isUnlocked ? "Full Access" : `Preview: ${Math.round(totalSeconds < 0 ? 0 : totalSeconds)}s / 90s`}
                     </div>
                 </div>
