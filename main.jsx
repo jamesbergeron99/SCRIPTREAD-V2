@@ -47,11 +47,10 @@ const Scriptread = () => {
     const decodedCache = useRef({});
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
-    const TRIAL_LIMIT = 90; // Updated to 90 seconds
+    const TRIAL_LIMIT = 90;
     const MAX_PAGES = 120;
 
     useEffect(() => {
-        // PERMANENT UNLOCK HANDSHAKE
         const params = new URLSearchParams(window.location.search);
         const isPaid = params.get('status') === 'success' || localStorage.getItem('scriptread_paid') === 'true';
         
@@ -98,7 +97,9 @@ const Scriptread = () => {
         if (hasGreetedRef.current) return;
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        const greetingText = "Welcome to Script reed Pro. Create professional sounding read throughs for less than a cup of coffee.";
+        
+        const greetingText = "Welcome to Script reed Pro. Create professional sounding table reads for less than a cup of coffee. Upload a PDF to begin, then cast your script from the voices in the drop down menu. It takes only moments to generate human sounding table reads that are perfect for hearing your dialogue and helping the creative process. Listen for free for ninety seconds, then you will be asked to pay three dollars to unlock the full service. No contracts, no subscriptions, and no credits. It is like a vending machine for writers.";
+        
         try {
             const buffer = await fetchAudio(greetingText, "Serena");
             const source = audioContext.current.createBufferSource();
@@ -119,7 +120,8 @@ const Scriptread = () => {
             .replace(/\bINT\b\.?/gi, "Interior")
             .replace(/\bDEE\b/g, "Dee")
             .replace(/\bsugar\b/gi, "shuger")
-            .replace(/\bScriptread\b/gi, "Script-reed");
+            .replace(/\bScriptread\b/gi, "Script-reed")
+            .replace(/\$3\b/g, "three dollars");
 
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
@@ -178,6 +180,9 @@ const Scriptread = () => {
                 actionBuffer = "";
             }
         };
+
+        const femaleMarkers = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "princess", "ms", "mrs"];
+        const maleMarkers = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "mr"];
 
         lines.forEach((line, i) => {
             let text = line.text.trim();
@@ -267,7 +272,7 @@ const Scriptread = () => {
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
-                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center animate-in fade-in duration-500">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
                         <div className="flex justify-center mb-6"><LogoIcon size="64" /></div>
                         <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Support your script</h2>
@@ -276,7 +281,7 @@ const Scriptread = () => {
                         <div className="flex flex-col items-center py-4">
                             <style dangerouslySetInnerHTML={{__html: `.pp-QVTMH7RF7NUBE{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}`}} />
                             <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank" style={{display:'inline-grid', justifyItems:'center', alignContent:'start', gap:'0.5rem'}}>
-                                <input className="pp-QVTMH7RF7NUBE" type="submit" value="Buy Now" />
+                                <input className="pp-QVTMH7RF7NUBE" type="submit" value="Unlock Full Script - $3.00" />
                                 <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
                                 <section style={{fontSize: '0.75rem'}}> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style={{height:'0.875rem', verticalAlign:'middle'}}/></section>
                             </form>
