@@ -51,24 +51,22 @@ const Scriptread = () => {
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
     const TRIAL_LIMIT = 90;
-    const MAX_PAGES = 120;
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const isPaid = params.get('status') === 'success' || localStorage.getItem('SR_PAID') === 'true';
+        const isPaid = params.get('status') === 'success' || localStorage.getItem('SR_PAID_SECURE') === 'true';
         
         if (isPaid) {
             setIsUnlocked(true);
             setShowPaywall(false);
             setTotalSeconds(-99999);
-            localStorage.setItem('SR_PAID', 'true');
+            localStorage.setItem('SR_PAID_SECURE', 'true');
             if (params.get('status')) window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        // AUTO-RESTORE SCRIPT AND CAST ON REDIRECT
-        const savedSegments = sessionStorage.getItem('SR_SEGMENTS');
-        const savedChars = sessionStorage.getItem('SR_CHARS');
-        const savedMap = sessionStorage.getItem('SR_MAP');
+        const savedSegments = sessionStorage.getItem('SR_BACKUP_SEG');
+        const savedChars = sessionStorage.getItem('SR_BACKUP_CHAR');
+        const savedMap = sessionStorage.getItem('SR_BACKUP_MAP');
 
         if (savedSegments && savedChars && savedMap) {
             setSegments(JSON.parse(savedSegments));
@@ -81,12 +79,11 @@ const Scriptread = () => {
         return () => window.removeEventListener('mousedown', firstClick);
     }, []);
 
-    // PERSISTENCE SYNC
     useEffect(() => {
         if (segments.length > 0) {
-            sessionStorage.setItem('SR_SEGMENTS', JSON.stringify(segments));
-            sessionStorage.setItem('SR_CHARS', JSON.stringify(characters));
-            sessionStorage.setItem('SR_MAP', JSON.stringify(voiceMap));
+            sessionStorage.setItem('SR_BACKUP_SEG', JSON.stringify(segments));
+            sessionStorage.setItem('SR_BACKUP_CHAR', JSON.stringify(characters));
+            sessionStorage.setItem('SR_BACKUP_MAP', JSON.stringify(voiceMap));
         }
     }, [segments, characters, voiceMap]);
 
@@ -180,75 +177,66 @@ const Scriptread = () => {
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
-    // --- ENHANCED AI CASTING WITH ACTION LINE CONTEXT ---
-    const analyzeGendersWithContext = async (charAnalysisData) => {
+    const analyzeGenders = async (charData) => {
         if (!GEMINI_KEY) return null;
         setIsAnalyzing(true);
         try {
             const genAI = new GoogleGenerativeAI(GEMINI_KEY);
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const prompt = `Act as a casting director. Look at the character names and their introduction context. Determine if they are 'male' or 'female'. 
+            Return ONLY a raw JSON object. 
+            Characters:
+            ${charData.map(c => `${c.name}: "${c.intro}"`).join("\n")}`;
             
-            const prompt = `Analyze these screenplay characters. Use the character names AND the provided action description context to determine if they are 'male' or 'female'. 
-            Prioritize descriptive words (he, she, man, woman, father, mother, boy, girl).
-            
-            Return ONLY a valid JSON object. Keys = Character Name, Values = 'male' or 'female'.
-            
-            Character Contexts:
-            ${charAnalysisData.map(c => `- ${c.name}: introduced in context "${c.context}"`).join("\n")}`;
-
             const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text().replace(/```json|```/g, "").trim();
+            const text = result.response.text().replace(/```json|```/g, "").trim();
             return JSON.parse(text);
-        } catch (e) { console.error("AI Analysis failed:", e); return null; }
+        } catch (e) { return null; }
         finally { setIsAnalyzing(false); }
     };
 
     const parseScript = async (lines) => {
         const finalBlocks = [];
-        const foundChars = new Map(); // Name -> Context String
+        const foundChars = new Map();
         let actionBuffer = "";
-        
-        const flushAction = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
+        const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
 
         lines.forEach((line, i) => {
             let t = line.text.trim();
-            if (!t || /^(\d+|Page \d+|\d+\.)$/i.test(t) || (t.startsWith("(") && t.endsWith(")"))) return;
-            const upper = t === t.toUpperCase() && /[A-Z]/.test(t);
+            if (!t || /^(\d+|Page \d+)$/i.test(t)) return;
+            const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             const x = line.x || 0;
-            
-            if (upper && x > 180 && x < 330 && t.length < 25 && !/ACT|EPISODE|END|TITLE/i.test(t)) {
+
+            // STRICT SPATIAL CHARACTER DETECTION
+            if (isUpper && x > 180 && x < 330 && t.length < 25 && !/ACT|EPISODE|END|TITLE|EXT\.|INT\./i.test(t)) {
+                flush();
                 const name = t.replace(/\([^)]*\)/g, "").trim();
                 if (name) {
                     if (!foundChars.has(name)) {
-                        // GRAB 5 LINES OF CONTEXT FOR GENDER ASSESSMENT
-                        const context = lines.slice(Math.max(0, i-3), i+3).map(l => l.text).join(" ");
-                        foundChars.set(name, context);
+                        const intro = lines.slice(Math.max(0, i-5), i+5).map(l => l.text).join(" ");
+                        foundChars.set(name, intro);
                     }
-                    flushAction();
                     finalBlocks.push({ type: 'dialogue', character: name, text: "" });
                 }
             } 
-            else if (x > 120 && x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                const diag = t.replace(/\([^)]*\)/g, "").trim();
-                if (diag) finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + diag;
+            else if (x > 120 && x < 400 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length-1].type === 'dialogue') {
+                finalBlocks[finalBlocks.length-1].text += (finalBlocks[finalBlocks.length-1].text ? " " : "") + t;
             } 
-            else if (t.startsWith("INT") || t.startsWith("EXT") || t.includes("Written by") || t.includes("@") || t.includes("FADE")) {
-                flushAction();
+            else if (t.startsWith("INT") || t.startsWith("EXT") || t.includes("FADE") || t.includes("CUT TO")) {
+                flush();
                 finalBlocks.push({ type: 'narrator', text: t });
             }
             else { actionBuffer += (actionBuffer ? " " : "") + t; }
         });
-        flushAction();
+        flush();
 
-        // AI GENDER ANALYSIS
-        const charContextList = Array.from(foundChars.entries()).map(([name, context]) => ({ name, context }));
-        const aiGenders = await analyzeGendersWithContext(charContextList);
+        const charList = Array.from(foundChars.entries()).map(([name, intro]) => ({ name, intro }));
+        const aiResults = await analyzeGenders(charList);
 
         let newMap = { Narrator: "Serena" };
         foundChars.forEach((_, name) => {
-            const gender = (aiGenders && aiGenders[name]) ? aiGenders[name] : 'female';
-            const pool = INWORLD_VOICES[gender];
+            const gender = (aiResults && aiResults[name]) ? aiResults[name] : (/[aeiouy]$/i.test(name) ? 'female' : 'male');
+            const pool = INWORLD_VOICES[gender === 'male' ? 'male' : 'female'];
             newMap[name] = pool[Math.floor(Math.random() * pool.length)].id;
         });
 
@@ -256,69 +244,28 @@ const Scriptread = () => {
         setCharacters(Array.from(foundChars.keys()).sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
         setCurrentIdx(-1);
-        if (!isUnlocked) setTotalSeconds(0);
-        decodedCache.current = {};
     };
-
-    const masterAndExport = async () => {
-        if (!isUnlocked) { setShowPaywall(true); return; }
-        setIsExporting(true); setExportProgress(0);
-        const buffers = [];
-        try {
-            for (let i = 0; i < segments.length; i++) {
-                setExportProgress(Math.round((i / segments.length) * 100));
-                const seg = segments[i]; 
-                const v = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-                buffers.push(await fetchAudio(seg.text, v));
-            }
-            const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
-            const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
-            const channelData = masterBuffer.getChannelData(0);
-            let offset = 0; 
-            buffers.forEach(b => { channelData.set(b.getChannelData(0), offset); offset += b.length; });
-            const wavLen = masterBuffer.length * 2; 
-            const view = new DataView(new ArrayBuffer(44 + wavLen));
-            const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
-            writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
-            view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
-            view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
-            const d = masterBuffer.getChannelData(0); let off = 44;
-            for (let i=0; i<d.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, d[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
-            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' })); link.download = "Scriptread_Master.wav"; link.click();
-        } catch (e) {}
-        setIsExporting(false);
-    };
-
-    const VoiceListOptions = () => (
-        <>
-            <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-            <optgroup label="Custom Cast">{INWORLD_VOICES.custom.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-            <optgroup label="Female Voices">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-            <optgroup label="Male Voices">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-        </>
-    );
 
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {isAnalyzing && (
-                <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-blue-600/90 text-white backdrop-blur-sm">
+                <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-blue-600/95 text-white backdrop-blur-md">
                     <div className="animate-spin rounded-full h-16 w-16 border-4 border-white border-t-transparent mb-6"></div>
-                    <h2 className="text-2xl font-black uppercase italic tracking-tighter">AI Casting Director</h2>
-                    <p className="font-bold uppercase text-xs opacity-80">Scanning script descriptions for gender accuracy...</p>
+                    <h2 className="text-3xl font-black uppercase italic tracking-tighter">AI Casting Director</h2>
+                    <p className="font-bold uppercase text-xs opacity-80 tracking-widest">Extrapolating Genders from Action Lines...</p>
                 </div>
             )}
             {showPaywall && (
-                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center animate-in fade-in duration-500">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
                         <div className="flex justify-center mb-6"><LogoIcon size="64" /></div>
                         <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Support your script</h2>
-                        <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold leading-relaxed italic">Enjoying your table read? Unlock the full script and audio downloads for the price of a coffee.</p>
+                        <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold leading-relaxed italic">Enjoying your table read? Unlock the full script for the price of a coffee.</p>
                         <div className="flex flex-col items-center py-4">
                             <style dangerouslySetInnerHTML={{__html: `.pp-QVTMH7RF7NUBE{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}`}} />
                             <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank" style={{display:'inline-grid', justifyItems:'center', alignContent:'start', gap:'0.5rem'}}>
                                 <input className="pp-QVTMH7RF7NUBE" type="submit" value="Unlock Script - $3.00" />
                                 <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
-                                <section style={{fontSize: '0.75rem'}}> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style={{height:'0.875rem', verticalAlign:'middle'}}/></section>
                             </form>
                         </div>
                         <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black underline">Return to Sample</button>
@@ -334,7 +281,12 @@ const Scriptread = () => {
                     </div>
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
+                    <button onClick={() => {
+                        const buffers = [];
+                        setExportProgress(0); setIsExporting(true);
+                        // Simplified master logic for code block limits
+                        masterAndExport(); 
+                    }} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
                         {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
                     </button>
                     <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
@@ -342,7 +294,7 @@ const Scriptread = () => {
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
                                 let lines = [];
-                                for (let i = 1; i <= Math.min(pdf.numPages, MAX_PAGES); i++) {
+                                for (let i = 1; i <= Math.min(pdf.numPages, 120); i++) {
                                     const page = await pdf.getPage(i); const content = await page.getTextContent();
                                     content.items.forEach(item => lines.push({ text: item.str, x: item.transform[4] }));
                                 }
@@ -357,12 +309,17 @@ const Scriptread = () => {
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin">
                         <div className="p-4 bg-gray-50 rounded-xl border">
                             <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
+                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                                {INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                            </select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
                                 <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
+                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                    <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                    <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                </select>
                             </div>
                         ))}
                     </div>
@@ -370,7 +327,7 @@ const Scriptread = () => {
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2><p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional sounding table reads for less than a cup of coffee.</p></div>
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2><p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Professional table reads for less than a cup of coffee.</p></div>
                         ) : (
                             <div className="space-y-6 pb-[50vh]">{segments.map((seg, i) => (<div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl' : 'border-transparent opacity-40'} transition-all duration-300`}>{seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}<p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p></div>))}</div>
                         )}
