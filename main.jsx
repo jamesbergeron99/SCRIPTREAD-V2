@@ -149,9 +149,23 @@ const Scriptread = () => {
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
+    const analyzeCharacterGenders = async (charData) => {
+        if (!GEMINI_KEY) return null;
+        setIsAnalyzing(true);
+        try {
+            const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const prompt = `Return ONLY valid JSON. No explanation. No markdown. Format: {"CHARACTER": "male", "CHARACTER2": "female"}. Evidence: ${charData.map(c => `- ${c.name}: "${c.evidence}"`).join("\n")}`;
+            const result = await model.generateContent(prompt);
+            const text = result.response.text().replace(/```json|```/g, "").trim();
+            try { return JSON.parse(text); } catch (e) { return null; }
+        } catch (e) { return null; }
+        finally { setIsAnalyzing(false); }
+    };
+
     const parseScript = async (lines) => {
         const finalBlocks = [];
-        const foundChars = new Set();
+        const charEvidence = new Map();
         let actionBuffer = "";
         const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
         const invalid = /^(INT|EXT|DAY|NIGHT|CUT|FADE|ACT|SCENE|ROOM|THE END|CONTINUED|BACK TO|KITCHEN|HALLWAY|BEDROOM)/i;
@@ -178,7 +192,9 @@ const Scriptread = () => {
 
             if (isChar) {
                 flush();
-                foundChars.add(cleanName);
+                if (!charEvidence.has(cleanName)) {
+                    charEvidence.set(cleanName, lines.slice(i, i+15).map(l => l.text).join(" "));
+                }
                 finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
             } else if (x > 100 && x < 450 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length-1].type === 'dialogue') {
                 finalBlocks[finalBlocks.length-1].text += (finalBlocks[finalBlocks.length-1].text ? " " : "") + t;
@@ -187,9 +203,62 @@ const Scriptread = () => {
             }
         }
         flush();
-        setCharacters(Array.from(foundChars).sort());
-        setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
+
+        // --- START OF MODIFIED CASTING LOGIC ---
+        const charEvidenceArray = Array.from(charEvidence.entries()).map(([name, evidence]) => ({ name, evidence }));
+        const aiCastingResults = await analyzeCharacterGenders(charEvidenceArray);
+        // Normalize Gemini keys to Uppercase for reliable matching
+        const normalizedAiResults = {};
+        if (aiCastingResults) {
+        Object.keys(aiCastingResults).forEach(key => {
+        normalizedAiResults[key.toUpperCase()] = aiCastingResults[key].toLowerCase();
+        });
+        }
+        const maleNames = ["ROBERT", "MICHAEL", "JAMES", "DAVID", "JOHN", "FRANK", "ZACK", "OLEG", "RICHARD", "SIMON", "PETER", "STEVE", "GARY", "MIKE", "CHRIS", "MARK", "PAUL", "KEVIN", "JASON", "BRIAN"];
+        const femaleNames = ["DEE", "DANICA", "SARAH", "JESSICA", "AMY", "FELICITY", "TULIP", "MARY", "LINDA", "SUSAN", "BARBARA", "KAREN", "EMILY", "KATHY", "LISA", "NANCY", "BETTY", "SANDRA"];
+        let newMap = { ...voiceMap };
+        charEvidence.forEach((_, name) => {
+        const upperName = name.toUpperCase();
+        const evidenceText = (charEvidence.get(name) || "").toLowerCase();
+        let gender = null;
+        // 1. Gemini Result
+        if (normalizedAiResults[upperName]) {
+            gender = normalizedAiResults[upperName].includes('male') && !normalizedAiResults[upperName].includes('female') ? 'male' : 'female';
+        }
+
+        // 2. Pronoun Detection
+        if (!gender) {
+            const maleMatch = evidenceText.match(/\b(he|him|his|man|father|boy|mr|guy)\b/g);
+            const femaleMatch = evidenceText.match(/\b(she|her|hers|woman|girl|mother|ms|mrs|lady)\b/g);
+            if (maleMatch && (!femaleMatch || maleMatch.length > femaleMatch.length)) gender = 'male';
+            else if (femaleMatch && (!maleMatch || femaleMatch.length > maleMatch.length)) gender = 'female';
+        }
+
+        // 3. Name Detection
+        if (!gender) {
+            if (maleNames.includes(upperName)) gender = 'male';
+            else if (femaleNames.includes(upperName)) gender = 'female';
+            else {
+                if (upperName.endsWith('A') || upperName.endsWith('IE') || upperName.endsWith('Y') || upperName.endsWith('AH')) gender = 'female';
+                else if (/[ORNDLKM]$/.test(upperName)) gender = 'male';
+            }
+        }
+
+        // 4. Deterministic fallback
+        const nameHash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        if (!gender) {
+            gender = nameHash % 2 === 0 ? 'male' : 'female';
+        }
+
+        // 5. Voice assignment
+        const pool = INWORLD_VOICES[gender];
+        newMap[name] = pool[nameHash % pool.length].id;
+        });
+        setVoiceMap(newMap);
+        setCharacters(Array.from(charEvidence.keys()).sort());
+        setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
         setCurrentIdx(-1);
+        // --- END OF MODIFIED CASTING LOGIC ---
     };
 
     const masterAndExport = async () => {
@@ -222,16 +291,21 @@ const Scriptread = () => {
 
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
+            {isAnalyzing && (
+                <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-blue-600 text-white backdrop-blur-md">
+                    <div className="animate-spin rounded-full h-24 w-24 border-8 border-white border-t-transparent mb-8"></div>
+                    <h2 className="text-3xl font-black uppercase italic tracking-tighter">AI Production Scan</h2>
+                </div>
+            )}
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center animate-in fade-in duration-500">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
                         <LogoIcon size="64" />
-                        <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Unlock Full Script</h2>
-                        <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold italic">Unlock the full read and high-quality audio mastering for $3.00.</p>
+                        <h2 className="text-4xl font-black uppercase italic mb-6">Support your script</h2>
                         <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank">
-                            <input type="submit" value="Unlock Now" className="bg-[#FFD140] font-black py-4 px-12 rounded-lg cursor-pointer hover:scale-105 transition-all shadow-lg" />
+                            <input type="submit" value="Unlock Script - $3.00" className="bg-[#FFD140] font-bold py-4 px-12 rounded-lg cursor-pointer hover:scale-105 transition-all" />
                         </form>
-                        <button onClick={() => setShowPaywall(false)} className="mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black underline">Return to Sample</button>
+                        <button onClick={() => setShowPaywall(false)} className="mt-4 text-xs underline font-bold text-gray-400 uppercase">Return</button>
                     </div>
                 </div>
             )}
@@ -285,7 +359,7 @@ const Scriptread = () => {
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 scrollbar-thin">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2></div>
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2></div>
                         ) : (
                             <div className="space-y-6 pb-[50vh]">{segments.map((seg, i) => (<div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>{seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}<p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p></div>))}</div>
                         )}
