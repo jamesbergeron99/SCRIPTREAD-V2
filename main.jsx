@@ -47,10 +47,21 @@ const Scriptread = () => {
     const decodedCache = useRef({});
     
     const API_KEY = import.meta.env.VITE_INWORLD_KEY;
-    const TRIAL_LIMIT = 120; // 2 Minute Sample
+    const TRIAL_LIMIT = 90; // Updated to 90 seconds
     const MAX_PAGES = 120;
 
     useEffect(() => {
+        // PERMANENT UNLOCK HANDSHAKE
+        const params = new URLSearchParams(window.location.search);
+        const isPaid = params.get('status') === 'success' || localStorage.getItem('scriptread_paid') === 'true';
+        
+        if (isPaid) {
+            setIsUnlocked(true);
+            setShowPaywall(false);
+            localStorage.setItem('scriptread_paid', 'true');
+            if (params.get('status')) window.history.replaceState({}, document.title, "/");
+        }
+
         const firstClick = () => handleFirstInteraction();
         window.addEventListener('mousedown', firstClick);
         return () => window.removeEventListener('mousedown', firstClick);
@@ -67,7 +78,6 @@ const Scriptread = () => {
         if (segments.length > 0) preloadFuture(currentIdx + 1);
     }, [currentIdx, segments]);
 
-    // ENFORCED GLOBAL PAYWALL WATCHER
     useEffect(() => {
         if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { 
             stopAudio(); 
@@ -99,12 +109,8 @@ const Scriptread = () => {
     };
 
     const stopAudio = () => {
-        isPlayingRef.current = false; 
-        setIsPlaying(false);
-        if (activeSource.current) { 
-            try { activeSource.current.stop(); } catch(e) {} 
-            activeSource.current = null; 
-        }
+        isPlayingRef.current = false; setIsPlaying(false);
+        if (activeSource.current) { try { activeSource.current.stop(); } catch(e) {} activeSource.current = null; }
     };
 
     const fetchAudio = async (text, voiceId) => {
@@ -137,14 +143,9 @@ const Scriptread = () => {
     };
 
     const playSegment = async (index) => {
-        // Double check lock state immediately
-        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) {
-            stopAudio();
-            setShowPaywall(true);
-            return;
-        }
-
+        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); return; }
         if (!isPlayingRef.current || index >= segments.length) return;
+
         setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
@@ -178,9 +179,6 @@ const Scriptread = () => {
             }
         };
 
-        const femaleMarkers = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "princess", "ms", "mrs"];
-        const maleMarkers = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "mr"];
-
         lines.forEach((line, i) => {
             let text = line.text.trim();
             if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text)) return;
@@ -197,8 +195,6 @@ const Scriptread = () => {
                     if (!newVoiceMap[cleanName]) {
                         const context = lines.slice(Math.max(0, i - 5), i + 15).map(l => l.text.toLowerCase()).join(" ");
                         let score = 0;
-                        femaleMarkers.forEach(m => { if (context.includes(m)) score += 3; });
-                        maleMarkers.forEach(m => { if (context.includes(m)) score -= 3; });
                         if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 20;
                         if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 20;
                         const pool = INWORLD_VOICES[score >= 0 ? 'female' : 'male'];
@@ -225,7 +221,7 @@ const Scriptread = () => {
         setCharacters([...foundChars].sort());
         setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
         setCurrentIdx(-1);
-        setTotalSeconds(0);
+        if (!isUnlocked) setTotalSeconds(0);
         decodedCache.current = {};
     };
 
@@ -271,21 +267,20 @@ const Scriptread = () => {
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {showPaywall && (
-                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center animate-in fade-in duration-500">
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
                         <div className="flex justify-center mb-6"><LogoIcon size="64" /></div>
-                        <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Sample Limit Reached</h2>
+                        <h2 className="text-4xl font-black uppercase italic mb-6 tracking-tighter">Support your script</h2>
                         <p className="text-sm mb-10 text-gray-500 uppercase tracking-tight font-bold leading-relaxed italic">Enjoying your table read? Unlock the full script and high-quality audio downloads for the price of a coffee.</p>
                         
                         <div className="flex flex-col items-center py-4">
                             <style dangerouslySetInnerHTML={{__html: `.pp-QVTMH7RF7NUBE{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}`}} />
                             <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank" style={{display:'inline-grid', justifyItems:'center', alignContent:'start', gap:'0.5rem'}}>
-                                <input className="pp-QVTMH7RF7NUBE" type="submit" value="Unlock Script - $2.99" />
+                                <input className="pp-QVTMH7RF7NUBE" type="submit" value="Buy Now" />
                                 <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
                                 <section style={{fontSize: '0.75rem'}}> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style={{height:'0.875rem', verticalAlign:'middle'}}/></section>
                             </form>
                         </div>
-
                         <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors underline">Return to Sample</button>
                     </div>
                 </div>
@@ -294,8 +289,8 @@ const Scriptread = () => {
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
-                    <div className="bg-blue-600 text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 tracking-widest italic shadow-sm">
-                        {isUnlocked ? "Full Access" : `Preview: ${Math.round(totalSeconds)}s / 120s`}
+                    <div className={`${isUnlocked ? 'bg-green-600' : 'bg-blue-600'} text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 tracking-widest italic shadow-sm`}>
+                        {isUnlocked ? "Full Access Unlocked" : `Preview: ${Math.round(totalSeconds)}s / 90s`}
                     </div>
                 </div>
                 <div className="flex gap-4">
@@ -323,12 +318,12 @@ const Scriptread = () => {
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
                         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-600 transition-colors" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
+                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-600" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                                 <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none focus:border-black transition-colors" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
+                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none focus:border-black" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
                             </div>
                         ))}
                     </div>
