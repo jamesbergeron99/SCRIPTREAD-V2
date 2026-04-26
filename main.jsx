@@ -65,7 +65,6 @@ const Scriptread = () => {
             if (params.get('status')) window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        // RELOAD STATE ON RETURN FROM PAYPAL
         const savedScript = sessionStorage.getItem('script_segments');
         const savedChars = sessionStorage.getItem('script_chars');
         const savedMap = sessionStorage.getItem('script_voicemap');
@@ -81,7 +80,6 @@ const Scriptread = () => {
         return () => window.removeEventListener('mousedown', firstClick);
     }, []);
 
-    // AUTO-SAVE SESSION DATA
     useEffect(() => {
         if (segments.length > 0) {
             sessionStorage.setItem('script_segments', JSON.stringify(segments));
@@ -181,15 +179,13 @@ const Scriptread = () => {
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
-    // --- GEMINI AI CASTING DIRECTOR ---
-    const analyzeGenders = async (charList, scriptSnippet) => {
+    const analyzeGenders = async (charAnalysisData) => {
         if (!GEMINI_KEY) return null;
         setIsAnalyzing(true);
         try {
             const genAI = new GoogleGenerativeAI(GEMINI_KEY);
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const prompt = `Analyze this screenplay snippet and the list of characters. For each character, identify if they are 'male' or 'female' based on names and dialogue context. Return ONLY a JSON object where keys are character names and values are 'male' or 'female'.\n\nCharacters: ${charList.join(", ")}\n\nScript:\n${scriptSnippet}`;
-            
+            const prompt = `Identify gender ('male' or 'female') for these script characters based on names and context: ${charAnalysisData.map(c => `${c.name} (context: ${c.context})`).join("; ")}. Return ONLY a JSON object: {"Name": "gender"}.`;
             const result = await model.generateContent(prompt);
             const response = await result.response;
             const text = response.text().replace(/```json|```/g, "").trim();
@@ -200,7 +196,7 @@ const Scriptread = () => {
 
     const parseScript = async (lines) => {
         const finalBlocks = [];
-        const foundChars = new Set();
+        const foundChars = new Map(); // Use Map to store context alongside name
         let actionBuffer = "";
 
         const flushAction = () => {
@@ -220,7 +216,10 @@ const Scriptread = () => {
                 flushAction();
                 const cleanName = text.replace(/\([^)]*\)/g, "").trim();
                 if (cleanName) {
-                    foundChars.add(cleanName);
+                    if (!foundChars.has(cleanName)) {
+                        const context = lines.slice(Math.max(0, i-5), i+5).map(l => l.text).join(" ");
+                        foundChars.set(cleanName, context);
+                    }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
                 }
             } 
@@ -236,15 +235,15 @@ const Scriptread = () => {
         });
         flushAction();
 
-        // AI CASTING TRIGGER
-        const charArray = [...foundChars];
-        const scriptSnippet = lines.slice(0, 500).map(l => l.text).join(" ");
-        const genderData = await analyzeGenders(charArray, scriptSnippet);
+        // AI CASTING LOGIC
+        const charArray = Array.from(foundChars.keys());
+        const charAnalysisData = charArray.map(name => ({ name, context: foundChars.get(name) }));
+        const genderData = await analyzeGenders(charAnalysisData);
 
         let newVoiceMap = { Narrator: "Serena" };
         charArray.forEach(char => {
-            const gender = (genderData && genderData[char]) ? genderData[char] : 'female';
-            const pool = INWORLD_VOICES[gender];
+            const gender = (genderData && genderData[char]) ? genderData[char].toLowerCase() : 'female';
+            const pool = INWORLD_VOICES[gender === 'male' ? 'male' : 'female'];
             newVoiceMap[char] = pool[Math.floor(Math.random() * pool.length)].id;
         });
 
