@@ -166,12 +166,11 @@ const Scriptread = () => {
 
     const parseScript = async (lines) => {
         const finalBlocks = [];
-        const charOccurrenceIndices = new Map(); // Name -> Array of line indices
+        const charOccurrenceIndices = new Map();
         let actionBuffer = "";
         const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
         const invalid = /^(INT|EXT|DAY|NIGHT|CUT|FADE|ACT|SCENE|ROOM|THE END|CONTINUED|BACK TO|KITCHEN|HALLWAY|BEDROOM)/i;
 
-        // Character Detection and Dialogue Assignment
         for (let i = 0; i < lines.length; i++) {
             let t = lines[i].text.trim();
             if (!t || /^(\d+|Page \d+)$/i.test(t)) continue;
@@ -185,7 +184,8 @@ const Scriptread = () => {
                 cleanName = t.replace(/\([^)]*\)/g, "").replace(/[^a-zA-Z0-9\s]/g, "").trim();
                 for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
                     const nx = lines[j].x || 0;
-                    if (nx > 100 && nx < 450 && lines[j].text !== lines[j].text.toUpperCase()) {
+                    // Dialogue criteria: Centered, NOT all uppercase, and within length limits
+                    if (nx > 180 && nx < 380 && lines[j].text !== lines[j].text.toUpperCase()) {
                         isChar = true; break;
                     }
                     if (lines[j].text === lines[j].text.toUpperCase() && nx > 200) break;
@@ -197,11 +197,25 @@ const Scriptread = () => {
                 if (!charOccurrenceIndices.has(cleanName)) charOccurrenceIndices.set(cleanName, []);
                 charOccurrenceIndices.get(cleanName).push(i);
                 finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
-            } else if (x > 100 && x < 450 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length-1].type === 'dialogue') {
-                finalBlocks[finalBlocks.length-1].text += (finalBlocks[finalBlocks.length-1].text ? " " : "") + t;
-                // Add index of dialogue line to evidence list
-                const currentChar = finalBlocks[finalBlocks.length-1].character;
-                if (charOccurrenceIndices.has(currentChar)) charOccurrenceIndices.get(currentChar).push(i);
+            } else if (finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
+                // DIALOGUE REFINEMENT LOGIC
+                const isParenthetical = t.startsWith("(") && t.endsWith(")");
+                const isShort = t.length < 120;
+                const inRange = x > 180 && x < 380;
+                const notUpper = t !== t.toUpperCase() || !/[A-Z]/.test(t);
+
+                // Check for hard stops
+                if ((!isParenthetical && !notUpper) || !isShort || !inRange) {
+                    // STOP dialogue block, treat line as narrator
+                    actionBuffer += (actionBuffer ? " " : "") + t;
+                    // Logic hack: push an empty narrator block to "close" the dialogue potential for this block
+                    flush();
+                } else {
+                    // Append to dialogue (includes parentheticals)
+                    finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + t;
+                    const currentChar = finalBlocks[finalBlocks.length - 1].character;
+                    if (charOccurrenceIndices.has(currentChar)) charOccurrenceIndices.get(currentChar).push(i);
+                }
             } else {
                 actionBuffer += (actionBuffer ? " " : "") + t;
             }
@@ -210,14 +224,11 @@ const Scriptread = () => {
 
         const detectedCharacters = Array.from(charOccurrenceIndices.keys());
 
-        // STEP 1 — BUILD GLOBAL EVIDENCE MAP
         const globalEvidence = {};
         detectedCharacters.forEach(name => {
             const indices = charOccurrenceIndices.get(name) || [];
             const collectedLines = new Set();
-            
             indices.forEach(idx => {
-                // Collect character appearance/dialogue line + nearby lines (±2 lines)
                 for (let k = Math.max(0, idx - 2); k <= Math.min(idx + 2, lines.length - 1); k++) {
                     collectedLines.add(lines[k].text);
                 }
@@ -225,7 +236,6 @@ const Scriptread = () => {
             globalEvidence[name] = Array.from(collectedLines).join(" ");
         });
 
-        // STEP 4 — IMPROVE GEMINI INPUT
         const charEvidenceArray = detectedCharacters.map(name => ({
             name,
             evidence: globalEvidence[name] || ""
@@ -233,7 +243,6 @@ const Scriptread = () => {
         
         const aiCastingResults = await analyzeCharacterGenders(charEvidenceArray);
 
-        // Normalize Gemini keys to Uppercase for reliable matching
         const normalizedAiResults = {};
         if (aiCastingResults) {
             Object.keys(aiCastingResults).forEach(key => {
@@ -247,16 +256,13 @@ const Scriptread = () => {
         let newMap = { ...voiceMap };
         detectedCharacters.forEach((name) => {
             const upperName = name.toUpperCase();
-            // STEP 2 — REPLACE LOCAL EVIDENCE
             const evidenceText = (globalEvidence[name] || "").toLowerCase();
             let gender = null;
 
-            // 1. Gemini Result
             if (normalizedAiResults[upperName]) {
                 gender = normalizedAiResults[upperName].includes('male') && !normalizedAiResults[upperName].includes('female') ? 'male' : 'female';
             }
 
-            // 2. Pronoun Detection (Now boosted by Global Evidence)
             if (!gender) {
                 const maleMatch = evidenceText.match(/\b(he|him|his|man|father|boy|mr|guy)\b/g);
                 const femaleMatch = evidenceText.match(/\b(she|her|hers|woman|girl|mother|ms|mrs|lady)\b/g);
@@ -264,7 +270,6 @@ const Scriptread = () => {
                 else if (femaleMatch && (!maleMatch || femaleMatch.length > maleMatch.length)) gender = 'female';
             }
 
-            // 3. Name Detection
             if (!gender) {
                 if (maleNames.includes(upperName)) gender = 'male';
                 else if (femaleNames.includes(upperName)) gender = 'female';
@@ -274,13 +279,11 @@ const Scriptread = () => {
                 }
             }
 
-            // 4. Deterministic fallback
             const nameHash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             if (!gender) {
                 gender = nameHash % 2 === 0 ? 'male' : 'female';
             }
 
-            // 5. Voice assignment
             const pool = INWORLD_VOICES[gender];
             newMap[name] = pool[nameHash % pool.length].id;
         });
