@@ -50,15 +50,22 @@ const Scriptread = () => {
     const TRIAL_LIMIT = 90;
     const MAX_PAGES = 120;
 
+    // CRITICAL: PAYMENT HANDSHAKE DETECTOR
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const isPaid = params.get('status') === 'success' || localStorage.getItem('scriptread_paid') === 'true';
+        const hasPaidInSession = params.get('status') === 'success';
+        const hasPaidInPast = localStorage.getItem('scriptread_paid_v1') === 'true';
         
-        if (isPaid) {
+        if (hasPaidInSession || hasPaidInPast) {
             setIsUnlocked(true);
             setShowPaywall(false);
-            localStorage.setItem('scriptread_paid', 'true');
-            if (params.get('status')) window.history.replaceState({}, document.title, "/");
+            setTotalSeconds(-99999); // Hard override to prevent timer from ever hitting limit again
+            localStorage.setItem('scriptread_paid_v1', 'true');
+            
+            // Clear URL so refreshing doesn't cause issues
+            if (hasPaidInSession) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
         }
 
         const firstClick = () => handleFirstInteraction();
@@ -77,6 +84,7 @@ const Scriptread = () => {
         if (segments.length > 0) preloadFuture(currentIdx + 1);
     }, [currentIdx, segments]);
 
+    // ENFORCED PAYWALL TRIGGER
     useEffect(() => {
         if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { 
             stopAudio(); 
@@ -145,7 +153,13 @@ const Scriptread = () => {
     };
 
     const playSegment = async (index) => {
-        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); return; }
+        // Stop immediately if limit reached and not paid
+        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) {
+            stopAudio();
+            setShowPaywall(true);
+            return;
+        }
+
         if (!isPlayingRef.current || index >= segments.length) return;
 
         setCurrentIdx(index);
@@ -180,9 +194,6 @@ const Scriptread = () => {
                 actionBuffer = "";
             }
         };
-
-        const femaleMarkers = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "princess", "ms", "mrs"];
-        const maleMarkers = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "mr"];
 
         lines.forEach((line, i) => {
             let text = line.text.trim();
@@ -281,7 +292,7 @@ const Scriptread = () => {
                         <div className="flex flex-col items-center py-4">
                             <style dangerouslySetInnerHTML={{__html: `.pp-QVTMH7RF7NUBE{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}`}} />
                             <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank" style={{display:'inline-grid', justifyItems:'center', alignContent:'start', gap:'0.5rem'}}>
-                                <input className="pp-QVTMH7RF7NUBE" type="submit" value="Unlock Full Script - $3.00" />
+                                <input className="pp-QVTMH7RF7NUBE" type="submit" value="Unlock Script - $3.00" />
                                 <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
                                 <section style={{fontSize: '0.75rem'}}> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style={{height:'0.875rem', verticalAlign:'middle'}}/></section>
                             </form>
@@ -295,7 +306,7 @@ const Scriptread = () => {
                     <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
                     <div className={`${isUnlocked ? 'bg-green-600' : 'bg-blue-600'} text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 tracking-widest italic shadow-sm`}>
-                        {isUnlocked ? "Full Access Unlocked" : `Preview: ${Math.round(totalSeconds)}s / 90s`}
+                        {isUnlocked ? "Full Access Unlocked" : `Preview: ${Math.round(totalSeconds < 0 ? 0 : totalSeconds)}s / 90s`}
                     </div>
                 </div>
                 <div className="flex gap-4">
