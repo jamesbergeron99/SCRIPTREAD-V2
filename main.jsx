@@ -50,28 +50,43 @@ const Scriptread = () => {
     const TRIAL_LIMIT = 90;
     const MAX_PAGES = 120;
 
-    // CRITICAL: PAYMENT HANDSHAKE DETECTOR
+    // --- SCRIPT PERSISTENCE ENGINE ---
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const hasPaidInSession = params.get('status') === 'success';
-        const hasPaidInPast = localStorage.getItem('scriptread_paid_v1') === 'true';
+        const isPaid = params.get('status') === 'success' || localStorage.getItem('scriptread_paid_v1') === 'true';
         
-        if (hasPaidInSession || hasPaidInPast) {
+        if (isPaid) {
             setIsUnlocked(true);
             setShowPaywall(false);
-            setTotalSeconds(-99999); // Hard override to prevent timer from ever hitting limit again
+            setTotalSeconds(-99999);
             localStorage.setItem('scriptread_paid_v1', 'true');
-            
-            // Clear URL so refreshing doesn't cause issues
-            if (hasPaidInSession) {
-                window.history.replaceState({}, document.title, window.location.pathname);
-            }
+            if (params.get('status')) window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // LOAD SAVED SCRIPT ON RE-ENTRY
+        const savedScript = sessionStorage.getItem('last_script_segments');
+        const savedChars = sessionStorage.getItem('last_script_chars');
+        const savedMap = sessionStorage.getItem('last_script_voicemap');
+
+        if (savedScript && savedChars && savedMap) {
+            setSegments(JSON.parse(savedScript));
+            setCharacters(JSON.parse(savedChars));
+            setVoiceMap(JSON.parse(savedMap));
         }
 
         const firstClick = () => handleFirstInteraction();
         window.addEventListener('mousedown', firstClick);
         return () => window.removeEventListener('mousedown', firstClick);
     }, []);
+
+    // AUTO-SAVE WHENEVER STATE CHANGES
+    useEffect(() => {
+        if (segments.length > 0) {
+            sessionStorage.setItem('last_script_segments', JSON.stringify(segments));
+            sessionStorage.setItem('last_script_chars', JSON.stringify(characters));
+            sessionStorage.setItem('last_script_voicemap', JSON.stringify(voiceMap));
+        }
+    }, [segments, characters, voiceMap]);
 
     useEffect(() => {
         audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -84,7 +99,6 @@ const Scriptread = () => {
         if (segments.length > 0) preloadFuture(currentIdx + 1);
     }, [currentIdx, segments]);
 
-    // ENFORCED PAYWALL TRIGGER
     useEffect(() => {
         if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { 
             stopAudio(); 
@@ -105,9 +119,7 @@ const Scriptread = () => {
         if (hasGreetedRef.current) return;
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        
         const greetingText = "Welcome to Script reed Pro. Create professional sounding table reads for less than a cup of coffee. Upload a PDF to begin, then cast your script from the voices in the drop down menu. It takes only moments to generate human sounding table reads that are perfect for hearing your dialogue and helping the creative process. Listen for free for ninety seconds, then you will be asked to pay three dollars to unlock the full service. No contracts, no subscriptions, and no credits. It is like a vending machine for writers.";
-        
         try {
             const buffer = await fetchAudio(greetingText, "Serena");
             const source = audioContext.current.createBufferSource();
@@ -153,19 +165,11 @@ const Scriptread = () => {
     };
 
     const playSegment = async (index) => {
-        // Stop immediately if limit reached and not paid
-        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) {
-            stopAudio();
-            setShowPaywall(true);
-            return;
-        }
-
+        if (!isUnlocked && totalSeconds >= TRIAL_LIMIT) { stopAudio(); setShowPaywall(true); return; }
         if (!isPlayingRef.current || index >= segments.length) return;
-
         setCurrentIdx(index);
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-
         try {
             let buffer = decodedCache.current[index] || await fetchAudio(seg.text, voice);
             if (!isPlayingRef.current) return;
@@ -195,6 +199,10 @@ const Scriptread = () => {
             }
         };
 
+        // CHARACTER INTELLIGENCE MARKERS
+        const femaleMarkers = ["she", "her", "hers", "woman", "girl", "lady", "wife", "mother", "daughter", "trans girl", "catgirl", "princess", "ms", "mrs", "miss"];
+        const maleMarkers = ["he", "him", "his", "man", "boy", "guy", "husband", "father", "son", "mr", "king", "prince"];
+
         lines.forEach((line, i) => {
             let text = line.text.trim();
             if (!text || /^(\d+|Page \d+|\d+\.)$/i.test(text)) return;
@@ -209,11 +217,20 @@ const Scriptread = () => {
                 if (cleanName) {
                     foundChars.add(cleanName);
                     if (!newVoiceMap[cleanName]) {
-                        const context = lines.slice(Math.max(0, i - 5), i + 15).map(l => l.text.toLowerCase()).join(" ");
+                        // SCAN NEXT 15 LINES FOR GENDER CONTEXT
+                        const contextRange = lines.slice(Math.max(0, i - 2), i + 15).map(l => l.text.toLowerCase()).join(" ");
                         let score = 0;
-                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM/i.test(cleanName)) score += 20;
-                        if (/FRANK|ZACK|OLEG|DAD|MR/i.test(cleanName)) score -= 20;
-                        const pool = INWORLD_VOICES[score >= 0 ? 'female' : 'male'];
+                        
+                        // Rule 1: Specific Name Overrides
+                        if (/FELICITY|DANEEKA|TULIP|SARAH|MOM|SHE|HER/i.test(cleanName)) score += 20;
+                        if (/FRANK|ZACK|OLEG|DAD|HE|HIM|MR/i.test(cleanName)) score -= 20;
+
+                        // Rule 2: Description Scan
+                        femaleMarkers.forEach(m => { if (new RegExp(`\\b${m}\\b`).test(contextRange)) score += 3; });
+                        maleMarkers.forEach(m => { if (new RegExp(`\\b${m}\\b`).test(contextRange)) score -= 3; });
+
+                        const gender = score >= 0 ? 'female' : 'male';
+                        const pool = INWORLD_VOICES[gender];
                         newVoiceMap[cleanName] = pool[Math.floor(Math.random() * pool.length)].id;
                     }
                     finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
@@ -297,7 +314,7 @@ const Scriptread = () => {
                                 <section style={{fontSize: '0.75rem'}}> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style={{height:'0.875rem', verticalAlign:'middle'}}/></section>
                             </form>
                         </div>
-                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors underline">Return to Sample</button>
+                        <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black underline transition-colors">Return to Sample</button>
                     </div>
                 </div>
             )}
