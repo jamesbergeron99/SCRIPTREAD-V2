@@ -119,7 +119,7 @@ const Scriptread = () => {
         if (hasGreetedRef.current) return;
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        const greetingText = "Welcome to Script reed Pro. Create professional sounding table reads for less than a cup of coffee. Upload a PDF to begin, then cast your script from the voices in the drop down menu. It takes only moments to generate human sounding table reads that are perfect for hearing your dialogue and helping the creative process. Listen for free for ninety seconds, then you will be asked to pay three dollars to unlock the full service. No contracts, no subscriptions, and no credits. It is like a vending machine for writers.";
+        const greetingText = "Welcome to Script reed Pro. Create professional sounding table reads for less than a cup of coffee.";
         try {
             const buffer = await fetchAudio(greetingText, "Serena");
             const source = audioContext.current.createBufferSource();
@@ -147,9 +147,8 @@ const Scriptread = () => {
 
     const auditionVoice = async (voiceId, charName) => {
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        const text = `Hello, I'm auditioning for the role of ${charName}.`;
         try {
-            const buffer = await fetchAudio(text, voiceId);
+            const buffer = await fetchAudio(`Hello, I'm auditioning for the role of ${charName}.`, voiceId);
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
@@ -185,18 +184,21 @@ const Scriptread = () => {
         try {
             const genAI = new GoogleGenerativeAI(GEMINI_KEY);
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const prompt = `Identify gender ('male' or 'female') for these script characters based on names and context: ${charAnalysisData.map(c => `${c.name} (context: ${c.context})`).join("; ")}. Return ONLY a JSON object: {"Name": "gender"}.`;
+            const prompt = `Act as a casting director. Identify gender ('male' or 'female') for these script characters based on names and action line context: ${charAnalysisData.map(c => `${c.name} (context: ${c.context})`).join("; ")}. 
+            
+            Strict Rule: Return ONLY a valid JSON object where keys are character names and values are 'male' or 'female'. No other text.`;
+            
             const result = await model.generateContent(prompt);
             const response = await result.response;
             const text = response.text().replace(/```json|```/g, "").trim();
             return JSON.parse(text);
-        } catch (e) { return null; }
+        } catch (e) { console.error("AI Casting failed", e); return null; }
         finally { setIsAnalyzing(false); }
     };
 
     const parseScript = async (lines) => {
         const finalBlocks = [];
-        const foundChars = new Map(); // Use Map to store context alongside name
+        const foundChars = new Map();
         let actionBuffer = "";
 
         const flushAction = () => {
@@ -235,15 +237,21 @@ const Scriptread = () => {
         });
         flushAction();
 
-        // AI CASTING LOGIC
+        // BLOCKING AI CASTING
         const charArray = Array.from(foundChars.keys());
         const charAnalysisData = charArray.map(name => ({ name, context: foundChars.get(name) }));
         const genderData = await analyzeGenders(charAnalysisData);
 
         let newVoiceMap = { Narrator: "Serena" };
         charArray.forEach(char => {
-            const gender = (genderData && genderData[char]) ? genderData[char].toLowerCase() : 'female';
-            const pool = INWORLD_VOICES[gender === 'male' ? 'male' : 'female'];
+            let gender = 'female'; // Default
+            if (genderData && genderData[char]) {
+                gender = genderData[char].toLowerCase() === 'male' ? 'male' : 'female';
+            } else {
+                // Secondary check if AI fails
+                if (!/[aeiouy]$/i.test(char)) gender = 'male';
+            }
+            const pool = INWORLD_VOICES[gender];
             newVoiceMap[char] = pool[Math.floor(Math.random() * pool.length)].id;
         });
 
@@ -255,52 +263,13 @@ const Scriptread = () => {
         decodedCache.current = {};
     };
 
-    const masterAndExport = async () => {
-        if (!isUnlocked) { setShowPaywall(true); return; }
-        setIsExporting(true); setExportProgress(0);
-        const buffers = [];
-        try {
-            for (let i = 0; i < segments.length; i++) {
-                setExportProgress(Math.round((i / segments.length) * 100));
-                const seg = segments[i]; 
-                const v = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-                const b = await fetchAudio(seg.text, v); 
-                buffers.push(b);
-            }
-            const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
-            const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
-            const channelData = masterBuffer.getChannelData(0);
-            let offset = 0; 
-            buffers.forEach(b => { channelData.set(b.getChannelData(0), offset); offset += b.length; });
-            const wavLen = masterBuffer.length * 2; 
-            const view = new DataView(new ArrayBuffer(44 + wavLen));
-            const writeString = (o, s) => { for (let i=0; i<s.length; i++) view.setUint8(o+i, s.charCodeAt(i)); };
-            writeString(0, 'RIFF'); view.setUint32(4, 36 + wavLen, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
-            view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
-            view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data'); view.setUint32(40, wavLen, true);
-            const d = masterBuffer.getChannelData(0); let off = 44;
-            for (let i=0; i<d.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, d[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
-            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' })); link.download = "Scriptread_Master.wav"; link.click();
-        } catch (e) {}
-        setIsExporting(false);
-    };
-
-    const VoiceListOptions = () => (
-        <>
-            <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-            <optgroup label="Custom Cast">{INWORLD_VOICES.custom.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-            <optgroup label="Female Voices">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-            <optgroup label="Male Voices">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-        </>
-    );
-
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             {isAnalyzing && (
                 <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-blue-600/90 text-white backdrop-blur-sm">
                     <div className="animate-spin rounded-full h-16 w-16 border-4 border-white border-t-transparent mb-6"></div>
                     <h2 className="text-2xl font-black uppercase italic tracking-tighter">AI Casting Director</h2>
-                    <p className="font-bold uppercase text-xs opacity-80">Analyzing script for accurate gender casting...</p>
+                    <p className="font-bold uppercase text-xs opacity-80">Scanning action lines for character genders...</p>
                 </div>
             )}
             {showPaywall && (
@@ -314,7 +283,6 @@ const Scriptread = () => {
                             <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank" style={{display:'inline-grid', justifyItems:'center', alignContent:'start', gap:'0.5rem'}}>
                                 <input className="pp-QVTMH7RF7NUBE" type="submit" value="Unlock Script - $3.00" />
                                 <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
-                                <section style={{fontSize: '0.75rem'}}> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style={{height:'0.875rem', verticalAlign:'middle'}}/></section>
                             </form>
                         </div>
                         <button onClick={() => setShowPaywall(false)} className="block w-full mt-6 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors underline">Return to Sample</button>
@@ -325,21 +293,17 @@ const Scriptread = () => {
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1>
-                    <div className={`${isUnlocked ? 'bg-green-600' : 'bg-blue-600'} text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 tracking-widest italic shadow-sm`}>
+                    <div className={`${isUnlocked ? 'bg-green-600' : 'bg-blue-600'} text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 tracking-widest italic`}>
                         {isUnlocked ? "Full Access Unlocked" : `Preview: ${Math.round(totalSeconds < 0 ? 0 : totalSeconds)}s / 90s`}
                     </div>
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
-                        {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
-                    </button>
                     <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
-                                const limit = Math.min(pdf.numPages, MAX_PAGES);
                                 let lines = [];
-                                for (let i = 1; i <= limit; i++) {
+                                for (let i = 1; i <= Math.min(pdf.numPages, MAX_PAGES); i++) {
                                     const page = await pdf.getPage(i); const content = await page.getTextContent();
                                     content.items.forEach(item => lines.push({ text: item.str, x: item.transform[4] }));
                                 }
@@ -351,20 +315,25 @@ const Scriptread = () => {
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-hidden">
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-widest">Production Cast</div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
-                        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none focus:border-blue-600" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}><VoiceListOptions /></select>
+                    <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin">
+                        <div className="p-4 bg-gray-50 rounded-xl border">
+                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "The Narrator")} className="bg-blue-600 text-white p-1 rounded-full"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                                {INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                            </select>
                         </div>
                         {characters.map(char => (
-                            <div key={char} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 active:scale-95 transition-all shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none focus:border-black" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}><VoiceListOptions /></select>
+                            <div key={char} className="p-4 bg-gray-50 rounded-xl border">
+                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                    <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                    <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                </select>
                             </div>
                         ))}
                     </div>
                 </aside>
-                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 scrollbar-thin">
+                <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
                         {segments.length === 0 ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2><p className="text-xl font-bold uppercase italic text-blue-600 tracking-tight mb-12">Create professional sounding table reads for less than a cup of coffee.</p></div>
