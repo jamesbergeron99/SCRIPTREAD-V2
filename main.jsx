@@ -52,7 +52,6 @@ const Scriptread = () => {
         if (isPaid) {
             setIsUnlocked(true); setShowPaywall(false); setTotalSeconds(-99999);
             localStorage.setItem('sr_full_access', 'true');
-            if (params.get('status')) window.history.replaceState({}, document.title, window.location.pathname);
         }
         const s_seg = sessionStorage.getItem('sr_cache_seg');
         const s_char = sessionStorage.getItem('sr_cache_char');
@@ -168,10 +167,18 @@ const Scriptread = () => {
         const finalBlocks = [];
         const charOccurrenceIndices = new Map();
         let actionBuffer = "";
+        let currentSpeaker = null; // STEP 1 — ADD STATE
+
         const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
         const invalid = /^(INT|EXT|DAY|NIGHT|CUT|FADE|ACT|SCENE|ROOM|THE END|CONTINUED|BACK TO|KITCHEN|HALLWAY|BEDROOM)/i;
 
         for (let i = 0; i < lines.length; i++) {
+            // STEP 4 — TITLE FIX
+            if (i < 10) {
+                actionBuffer += (actionBuffer ? " " : "") + lines[i].text.trim();
+                continue;
+            }
+
             let t = lines[i].text.trim();
             if (!t || /^(\d+|Page \d+)$/i.test(t)) continue;
             const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
@@ -184,7 +191,6 @@ const Scriptread = () => {
                 cleanName = t.replace(/\([^)]*\)/g, "").replace(/[^a-zA-Z0-9\s]/g, "").trim();
                 for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
                     const nx = lines[j].x || 0;
-                    // Dialogue criteria: Centered, NOT all uppercase, and within length limits
                     if (nx > 180 && nx < 380 && lines[j].text !== lines[j].text.toUpperCase()) {
                         isChar = true; break;
                     }
@@ -192,31 +198,35 @@ const Scriptread = () => {
                 }
             }
 
+            // STEP 2 — WHEN CHARACTER IS DETECTED
             if (isChar) {
                 flush();
+                currentSpeaker = cleanName;
                 if (!charOccurrenceIndices.has(cleanName)) charOccurrenceIndices.set(cleanName, []);
                 charOccurrenceIndices.get(cleanName).push(i);
                 finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
-            } else if (finalBlocks.length > 0 && finalBlocks[finalBlocks.length - 1].type === 'dialogue') {
-                // DIALOGUE REFINEMENT LOGIC
+            } 
+            // STEP 3 — HANDLE DIALOGUE PROPERLY
+            else if (currentSpeaker) {
                 const isParenthetical = t.startsWith("(") && t.endsWith(")");
+                const isUpperLine = t === t.toUpperCase() && /[A-Z]/.test(t);
+                const inRange = x > 160 && x < 420;
                 const isShort = t.length < 120;
-                const inRange = x > 180 && x < 380;
-                const notUpper = t !== t.toUpperCase() || !/[A-Z]/.test(t);
 
-                // Check for hard stops
-                if ((!isParenthetical && !notUpper) || !isShort || !inRange) {
-                    // STOP dialogue block, treat line as narrator
-                    actionBuffer += (actionBuffer ? " " : "") + t;
-                    // Logic hack: push an empty narrator block to "close" the dialogue potential for this block
-                    flush();
-                } else {
-                    // Append to dialogue (includes parentheticals)
+                if (isParenthetical || (!isUpperLine && inRange && isShort)) {
+                    // Continue dialogue
                     finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + t;
-                    const currentChar = finalBlocks[finalBlocks.length - 1].character;
-                    if (charOccurrenceIndices.has(currentChar)) charOccurrenceIndices.get(currentChar).push(i);
+                    if (charOccurrenceIndices.has(currentSpeaker)) {
+                        charOccurrenceIndices.get(currentSpeaker).push(i);
+                    }
+                } else {
+                    // END dialogue cleanly
+                    currentSpeaker = null;
+                    actionBuffer += (actionBuffer ? " " : "") + t;
                 }
-            } else {
+            } 
+            // STEP 5 — NARRATOR DEFAULT
+            else {
                 actionBuffer += (actionBuffer ? " " : "") + t;
             }
         }
@@ -380,7 +390,7 @@ const Scriptread = () => {
                         </div>
                         {characters.map(char => (
                             <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
+                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                                 <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
                                     <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
