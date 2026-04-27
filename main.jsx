@@ -53,16 +53,47 @@ const Scriptread = () => {
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const isPaid = params.get('status') === 'success' || localStorage.getItem('sr_full_access') === 'true';
+        const isPaid = params.get('status') === 'success' || localStorage.getItem('sr_full_unlocked') === 'true';
         if (isPaid) {
             setIsUnlocked(true); setShowPaywall(false); setTotalSeconds(-99999);
-            localStorage.setItem('sr_full_access', 'true');
+            localStorage.setItem('sr_full_unlocked', 'true');
+            if (params.get('status')) window.history.replaceState({}, document.title, window.location.pathname);
         }
-        audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        const firstClick = () => handleFirstInteraction();
-        window.addEventListener('mousedown', firstClick);
-        return () => window.removeEventListener('mousedown', firstClick);
+        const s_seg = sessionStorage.getItem('sr_final_seg');
+        const s_char = sessionStorage.getItem('sr_final_char');
+        const s_map = sessionStorage.getItem('sr_final_map');
+        if (s_seg && s_char && s_map) {
+            setSegments(JSON.parse(s_seg));
+            setCharacters(JSON.parse(s_char));
+            setVoiceMap(JSON.parse(s_map));
+        }
+        const welcome = () => handleFirstInteraction();
+        window.addEventListener('mousedown', welcome);
+        return () => window.removeEventListener('mousedown', welcome);
     }, []);
+
+    useEffect(() => {
+        if (segments.length > 0) {
+            sessionStorage.setItem('sr_final_seg', JSON.stringify(segments));
+            sessionStorage.setItem('sr_final_char', JSON.stringify(characters));
+            sessionStorage.setItem('sr_final_map', JSON.stringify(voiceMap));
+        }
+    }, [segments, characters, voiceMap]);
+
+    useEffect(() => {
+        audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    }, []);
+
+    useEffect(() => {
+        if (currentIdx !== -1 && segmentRefs.current[currentIdx]) {
+            segmentRefs.current[currentIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (segments.length > 0) preloadFuture(currentIdx + 1);
+    }, [currentIdx, segments]);
+
+    useEffect(() => {
+        if (!isUnlocked && totalSeconds >= 90) { stopAudio(); setShowPaywall(true); }
+    }, [totalSeconds, isUnlocked]);
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
@@ -70,25 +101,14 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        const cleaned = text.replace(/\bEXT\b\.?/gi, "Exterior").replace(/\bINT\b\.?/gi, "Interior").replace(/\bDEE\b/g, "Dee");
+        const cleanedText = text.replace(/\bEXT\b\.?/gi, "Exterior").replace(/\bINT\b\.?/gi, "Interior").replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger").replace(/\bScriptread\b/gi, "Script-reed");
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ text: cleaned, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
+            body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
         });
         const data = await response.json();
         return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
-    };
-
-    const handleFirstInteraction = async () => {
-        if (hasGreetedRef.current) return;
-        hasGreetedRef.current = true;
-        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-        try {
-            const buffer = await fetchAudio("Welcome to Script-reed Pro. Starting deep script analysis.", "Serena");
-            const source = audioContext.current.createBufferSource();
-            source.buffer = buffer; source.connect(audioContext.current.destination); source.start();
-        } catch (err) { hasGreetedRef.current = false; }
     };
 
     const auditionVoice = async (voiceId, charName) => {
@@ -96,7 +116,9 @@ const Scriptread = () => {
         try {
             const buffer = await fetchAudio(`Auditioning for ${charName}.`, voiceId);
             const source = audioContext.current.createBufferSource();
-            source.buffer = buffer; source.connect(audioContext.current.destination); source.start();
+            source.buffer = buffer;
+            source.connect(audioContext.current.destination);
+            source.start();
         } catch (e) {}
     };
 
@@ -107,7 +129,7 @@ const Scriptread = () => {
         const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
         try {
-            let buffer = await fetchAudio(seg.text, voice);
+            let buffer = decodedCache.current[index] || await fetchAudio(seg.text, voice);
             if (!isPlayingRef.current) return;
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
@@ -116,18 +138,41 @@ const Scriptread = () => {
                 setTotalSeconds(prev => prev + buffer.duration);
                 if (isPlayingRef.current) playSegment(index + 1); 
             };
-            activeSource.current = source; source.start();
+            activeSource.current = source;
+            source.start();
+            preloadFuture(index + 1);
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
-    const runBrainScan = async (charData) => {
+    const preloadFuture = async (startIdx) => {
+        for (let i = startIdx; i < startIdx + 3; i++) {
+            if (i >= segments.length || decodedCache.current[i]) continue;
+            const seg = segments[i];
+            const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
+            fetchAudio(seg.text, voice).then(buffer => { decodedCache.current[i] = buffer; });
+        }
+    };
+
+    const handleFirstInteraction = async () => {
+        if (hasGreetedRef.current) return;
+        hasGreetedRef.current = true;
+        if (audioContext.current.state === 'suspended') await audioContext.current.resume();
+        try {
+            const buffer = await fetchAudio("Welcome to Script reed Pro.", "Serena");
+            const source = audioContext.current.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.current.destination);
+            source.start();
+        } catch (err) { hasGreetedRef.current = false; }
+    };
+
+    const analyzeGenders = async (charData) => {
         if (!GEMINI_KEY) return null;
         setIsAnalyzing(true);
         try {
             const genAI = new GoogleGenerativeAI(GEMINI_KEY);
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const prompt = `Identify if each character is 'male' or 'female'. Use character name AND the context provided. Return ONLY JSON: {"NAME": "male"}.
-            Data: ${charData.map(c => `- ${c.name}: "${c.evidence}"`).join("\n")}`;
+            const prompt = `Identify if each character is 'male' or 'female' based on names and dialogue context. Return ONLY JSON: {"NAME": "male"}. Evidence: ${charData.map(c => `- ${c.name}: "${c.evidence}"`).join("\n")}`;
             const result = await model.generateContent(prompt);
             const text = result.response.text().replace(/```json|```/g, "").trim();
             return JSON.parse(text);
@@ -138,50 +183,43 @@ const Scriptread = () => {
     const parseScript = async (lines) => {
         const finalBlocks = [];
         const charEvidence = new Map();
-        let actionBuffer = "";
-        const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
-        const invalid = /^(INT|EXT|DAY|NIGHT|FADE|CUT|ACT|SCENE|ROOM|THE END|CONTINUED|BACK TO|TITLE|COLD|OPEN|BEGIN)/i;
+        let currentDialogueChar = null;
+        const invalid = /^(INT|EXT|DAY|NIGHT|FADE|CUT|TITLE|ACT|SCENE|END|BEGIN|COLD|OPEN|FLASHBACK|CONTINUED|BACK|OVER|WRITTEN|BY)/i;
 
-        for (let i = 0; i < lines.length; i++) {
-            let t = lines[i].text.trim();
-            if (!t || /^(\d+|Page \d+)$/i.test(t)) continue;
+        lines.forEach((line, i) => {
+            let t = line.text.trim();
+            if (!t || /^(\d+|Page \d+|\d+\.)$/i.test(t)) return;
+
             const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
-            const x = lines[i].x || 0;
+            const x = line.x || 0;
 
-            let isChar = false;
-            let cleanName = "";
-
-            if (isUpper && x > 200 && x < 350 && t.length < 30 && !invalid.test(t)) {
-                // Peek for dialogue within 3 lines
-                for (let j = i + 1; j <= Math.min(i + 3, lines.length - 1); j++) {
-                    if (lines[j].text.trim() && lines[j].text.trim() !== lines[j].text.trim().toUpperCase()) {
-                        isChar = true; break;
-                    }
-                    if (lines[j].text.trim() === lines[j].text.trim().toUpperCase() && lines[j].x > 200) break;
+            // Character detection
+            if (isUpper && x > 180 && x < 330 && t.length < 25 && !invalid.test(t)) {
+                currentDialogueChar = t.replace(/\([^)]*\)/g, "").trim();
+                if (!charEvidence.has(currentDialogueChar)) {
+                    charEvidence.set(currentDialogueChar, lines.slice(Math.max(0, i-5), i+15).map(l => l.text).join(" "));
                 }
+                return; // Don't push character name as a segment
             }
 
-            if (isChar) {
-                flush();
-                cleanName = t.replace(/\([^)]*\)/g, "").trim();
-                if (!charEvidence.has(cleanName)) {
-                    charEvidence.set(cleanName, lines.slice(Math.max(0, i - 10), i + 20).map(l => l.text).join(" "));
-                }
-                finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
-            } else if (x > 120 && x < 450 && finalBlocks.length > 0 && finalBlocks[finalBlocks.length-1].type === 'dialogue') {
-                finalBlocks[finalBlocks.length-1].text += (finalBlocks[finalBlocks.length-1].text ? " " : "") + t;
+            // Dialogue or Action?
+            if (currentDialogueChar && x > 120 && x < 450 && t.length < 150) {
+                // If it's a line following a character name, it's dialogue. 
+                // Push it as its own block immediately (Line-by-line)
+                finalBlocks.push({ type: 'dialogue', character: currentDialogueChar, text: t });
             } else {
-                actionBuffer += (actionBuffer ? " " : "") + t;
+                // Otherwise, it's a slug line or action. Push as Narrator.
+                currentDialogueChar = null; // Break dialogue chain
+                finalBlocks.push({ type: 'narrator', text: t });
             }
-        }
-        flush();
+        });
 
         const evidenceArr = Array.from(charEvidence.entries()).map(([name, evidence]) => ({ name, evidence }));
-        const brainResults = await runBrainScan(evidenceArr);
+        const aiResults = await analyzeGenders(evidenceArr);
 
         let newMap = { Narrator: "Serena" };
         charEvidence.forEach((_, name) => {
-            const gender = (brainResults && brainResults[name]) ? brainResults[name].toLowerCase() : (name.toLowerCase().endsWith('a') ? 'female' : 'male');
+            const gender = (aiResults && aiResults[name]) ? aiResults[name].toLowerCase() : (name.toLowerCase().endsWith('a') ? 'female' : 'male');
             const pool = INWORLD_VOICES[gender === 'male' ? 'male' : 'female'];
             const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
             newMap[name] = pool[hash % pool.length].id;
@@ -189,7 +227,7 @@ const Scriptread = () => {
 
         setVoiceMap(newMap);
         setCharacters(Array.from(charEvidence.keys()).sort());
-        setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
+        setSegments(finalBlocks);
         setCurrentIdx(-1);
     };
 
@@ -226,8 +264,7 @@ const Scriptread = () => {
             {isAnalyzing && (
                 <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-blue-600 text-white backdrop-blur-md">
                     <div className="animate-spin rounded-full h-24 w-24 border-8 border-white border-t-transparent mb-8"></div>
-                    <h2 className="text-3xl font-black uppercase italic tracking-tighter">Deep Casting Analysis</h2>
-                    <p className="uppercase font-bold text-xs opacity-70">Matching voices to character context...</p>
+                    <h2 className="text-3xl font-black uppercase italic tracking-tighter">AI Production Brain Scan</h2>
                 </div>
             )}
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shrink-0 z-50">
@@ -254,7 +291,7 @@ const Scriptread = () => {
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-hidden">
                     <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-widest font-bold">Cast List</div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin">
-                        <div className="p-4 bg-gray-50 rounded-xl border">
+                        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
                             <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                                 <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
@@ -284,10 +321,10 @@ const Scriptread = () => {
                 </main>
             </div>
             <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
-                <button onClick={() => { stopAudio(); setCurrentIdx(-1); }} className="hover:scale-110 transition-transform font-black text-xs text-gray-400">Restart</button>
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-110 transition-transform font-black text-xs text-gray-400">Back</button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(-1); }} className="hover:scale-110 transition-transform font-black uppercase text-[10px] text-gray-400 tracking-widest">Restart</button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-110 transition-transform font-black uppercase text-[10px] text-gray-400 tracking-widest">Back</button>
                 <button onClick={() => { if (isPlaying) stopAudio(); else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl font-black">{isPlaying ? "PAUSE" : "PLAY"}</button>
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform font-black text-xs text-gray-400">Next</button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform font-black uppercase text-[10px] text-gray-400 tracking-widest">Next</button>
             </footer>
         </div>
     );
