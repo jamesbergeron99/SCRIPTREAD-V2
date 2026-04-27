@@ -53,16 +53,6 @@ const LogoIcon = ({ size = "40", color = "#2563eb" }) => (
     </svg>
 );
 
-const Spinner = ({ label }) => (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16, padding:'60px 0' }}>
-        <div style={{ width:48, height:48, border:'3px solid #e5e7eb', borderTopColor:'#2563eb', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
-        <p style={{ fontSize:13, color:'#6b7280', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase' }}>{label}</p>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-);
-
-const SLUG_WORDS = new Set(['INT','EXT','DAY','NIGHT','CUT','FADE','ACT','SCENE','THE','END','BEGIN','MONTAGE','TITLE','OVER','CONTINUED']);
-
 const Scriptread = () => {
     const [segments, setSegments] = useState([]);
     const [characters, setCharacters] = useState([]);
@@ -75,7 +65,6 @@ const Scriptread = () => {
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
     const [parseStatus, setParseStatus] = useState('idle');
-    const [previewingChar, setPreviewingChar] = useState(null);
 
     const audioCtx = useRef(null);
     const activeSource = useRef(null);
@@ -92,7 +81,6 @@ const Scriptread = () => {
         const paid = params.get('status') === 'success' || localStorage.getItem('sr_full_access') === 'true';
         if (paid) { setIsUnlocked(true); localStorage.setItem('sr_full_access', 'true'); }
         audioCtx.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        return () => audioCtx.current?.close();
     }, []);
 
     const fetchAudio = async (text, voiceId) => {
@@ -114,30 +102,6 @@ const Scriptread = () => {
         isPlayingRef.current = false; setIsPlaying(false);
         try { activeSource.current?.stop(); } catch(_) {}
         activeSource.current = null;
-    };
-
-    const handleFirstInteraction = async () => {
-        if (hasGreetedRef.current) return;
-        hasGreetedRef.current = true;
-        if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
-        try { 
-            const buf = await fetchAudio('Welcome back to Script-reed Pro.', 'Serena');
-            const src = audioCtx.current.createBufferSource();
-            src.buffer = buf; src.connect(audioCtx.current.destination); src.start();
-        } catch(_) { hasGreetedRef.current = false; }
-    };
-
-    const auditionVoice = async (voiceId, charName) => {
-        setPreviewingChar(charName);
-        if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
-        try {
-            stopAudio();
-            const buf = await fetchAudio(`Hi, I'm ${charName}.`, voiceId);
-            const src = audioCtx.current.createBufferSource();
-            src.buffer = buf; src.connect(audioCtx.current.destination);
-            src.onended = () => setPreviewingChar(null);
-            src.start();
-        } catch(_) { setPreviewingChar(null); }
     };
 
     const playSegment = async (index) => {
@@ -162,21 +126,6 @@ const Scriptread = () => {
         } catch(_) { if (isPlayingRef.current) playSegment(index + 1); }
     };
 
-    const classifyGenders = async (names) => {
-        if (!names.length || !GEMINI_KEY) return {};
-        try {
-            const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-            const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-            const prompt = `Return ONLY JSON: {"CHARACTER_NAME": "male/female"}. Based on: ${names.join(', ')}`;
-            const result = await model.generateContent(prompt);
-            const raw = result.response.text().trim().replace(/```json|```/g, '').trim();
-            const parsed = JSON.parse(raw);
-            const normalized = {};
-            Object.entries(parsed).forEach(([k, v]) => { normalized[k.toUpperCase()] = v.toLowerCase(); });
-            return normalized;
-        } catch(e) { return {}; }
-    };
-
     const parseScript = async (lines) => {
         setParseStatus('parsing');
         const blocks = [];
@@ -187,6 +136,8 @@ const Scriptread = () => {
             if (actionBuf.trim()) { blocks.push({ type: 'narrator', text: actionBuf.trim() }); actionBuf = ''; }
         };
 
+        const SLUG_WORDS = /^(INT|EXT|DAY|NIGHT|CUT|FADE|ACT|SCENE|THE|END|BEGIN|MONTAGE|TITLE|OVER|CONTINUED|BACK TO)/i;
+
         for (let i = 0; i < lines.length; i++) {
             const t = lines[i].text.trim();
             const x = lines[i].x || 0;
@@ -194,13 +145,13 @@ const Scriptread = () => {
 
             const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             let isCharCue = false;
-            
-            // Tightened Character Header Detection
-            if (isUpper && x > 100 && x < 380 && t.length < 40 && !SLUG_WORDS.has(t.split(' ')[0])) {
+
+            // Character Detection logic
+            if (isUpper && x > 150 && x < 380 && t.length < 35 && !SLUG_WORDS.test(t)) {
                 for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
                     const peek = lines[j].text.trim();
                     if (!peek) continue;
-                    if (peek.startsWith('(') || peek !== peek.toUpperCase() || lines[j].x > 180) { isCharCue = true; break; }
+                    if (peek.startsWith('(') || peek !== peek.toUpperCase()) { isCharCue = true; break; }
                     break;
                 }
             }
@@ -214,13 +165,13 @@ const Scriptread = () => {
 
             if (currentChar) {
                 const isParen = t.startsWith('(') && t.endsWith(')');
-                const isMixed = t !== t.toUpperCase() || !/[A-Z]/.test(t);
-                // If it looks like dialogue or a parenthetical, stay with character
-                if ((isMixed || isParen) && x > 72 && x < 470) {
+                const isDialogue = t !== t.toUpperCase() || !/[A-Z]/.test(t);
+                // IF ACTION BLEED (too long or wrong X position), HAND OFF TO NARRATOR
+                if ((isDialogue || isParen) && x > 100 && x < 450 && t.length < 180) {
                     if (!isParen) blocks[blocks.length-1].text += (blocks[blocks.length-1].text ? ' ' : '') + t;
                     continue;
                 } else {
-                    currentChar = null; // DEFAULT TO NARRATOR HAND-OFF
+                    currentChar = null; 
                 }
             }
 
@@ -231,18 +182,6 @@ const Scriptread = () => {
         const finalBlocks = blocks.filter(b => b.text.trim().length > 0);
         const uniqueNames = [...new Set(finalBlocks.filter(b => b.type === 'dialogue').map(b => b.character))];
         
-        setParseStatus('casting');
-        const genderMap = await classifyGenders(uniqueNames);
-        const nameHash = n => n.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-
-        const newVoiceMap = { Narrator: voiceMap.Narrator };
-        uniqueNames.forEach(name => {
-            const gender = genderMap[name.toUpperCase()] || (name.toLowerCase().endsWith('a') ? 'female' : 'male');
-            const pool = gender === 'male' ? INWORLD_VOICES.male : INWORLD_VOICES.female;
-            newVoiceMap[name] = pool[nameHash(name) % pool.length].id;
-        });
-
-        setVoiceMap(newVoiceMap);
         setCharacters(uniqueNames.sort());
         setSegments(finalBlocks);
         setParseStatus('ready');
@@ -251,7 +190,6 @@ const Scriptread = () => {
     const handlePdfLoad = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        handleFirstInteraction();
         const reader = new FileReader();
         reader.onload = async () => {
             const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
@@ -266,37 +204,72 @@ const Scriptread = () => {
         reader.readAsArrayBuffer(file);
     };
 
+    const masterAndExport = async () => {
+        if (!isUnlocked) { setShowPaywall(true); return; }
+        setIsExporting(true); setExportProgress(0);
+        const buffers = [];
+        try {
+            for (let i = 0; i < segments.length; i++) {
+                setExportProgress(Math.round((i / segments.length) * 100));
+                const seg = segments[i];
+                const v = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || 'Abby');
+                buffers.push(await fetchAudio(seg.text, v));
+            }
+            const totalLen = buffers.reduce((a, b) => a + b.length, 0);
+            const master = audioCtx.current.createBuffer(1, totalLen, 24000);
+            const ch = master.getChannelData(0);
+            let off = 0;
+            buffers.forEach(b => { ch.set(b.getChannelData(0), off); off += b.length; });
+            const wavLen = master.length * 2;
+            const view = new DataView(new ArrayBuffer(44 + wavLen));
+            const ws = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+            ws(0,'RIFF'); view.setUint32(4,36+wavLen,true); ws(8,'WAVE'); ws(12,'fmt ');
+            view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+            view.setUint32(24,24000,true); view.setUint32(28,48000,true);
+            view.setUint16(32,2,true); view.setUint16(34,16,true); ws(36,'data'); view.setUint32(40,wavLen,true);
+            const d = master.getChannelData(0); let o2 = 44;
+            for (let i = 0; i < d.length; i++, o2+=2) {
+                const s = Math.max(-1,Math.min(1,d[i]));
+                view.setInt16(o2, s < 0 ? s*0x8000 : s*0x7FFF, true);
+            }
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([view.buffer],{type:'audio/wav'}));
+            link.download = 'Scriptread_Master.wav'; link.click();
+        } catch(_) {} finally { setIsExporting(false); }
+    };
+
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shrink-0 z-50">
-                <div className="flex items-center gap-4"><LogoIcon size="40" /><h1 className="text-3xl font-black uppercase italic tracking-tight italic">Scriptread <span className="text-blue-600">Pro</span></h1></div>
-                <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer shadow-lg select-none">
-                    Load Script <input type="file" className="hidden" accept=".pdf" onChange={handlePdfLoad} />
-                </label>
+                <div className="flex items-center gap-4"><LogoIcon size="40" /><h1 className="text-3xl font-black uppercase italic tracking-tight">Scriptread <span className="text-blue-600">Pro</span></h1></div>
+                <div className="flex gap-4">
+                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50'}`}>
+                        {isExporting ? `Exporting ${exportProgress}%` : "Master WAV"}
+                    </button>
+                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer shadow-lg">
+                        Load Script <input type="file" className="hidden" accept=".pdf" onChange={handlePdfLoad} />
+                    </label>
+                </div>
             </header>
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-y-auto p-5">
                     <div className="font-black uppercase text-[10px] text-gray-400 mb-3 tracking-widest">Narrator Control</div>
-                    <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg mb-5 outline-none" value={voiceMap.Narrator} onChange={e => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                    <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg mb-5" value={voiceMap.Narrator} onChange={e => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                         {INWORLD_VOICES.narrators.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
                     </select>
                     {characters.map(char => (
                         <div key={char} className="p-4 bg-gray-50 rounded-xl border mb-3">
                             <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
-                            <div className="flex gap-2">
-                                <select className="flex-1 bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || 'Abby'} onChange={e => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    <optgroup label="Female Voices">{INWORLD_VOICES.female.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                                    <optgroup label="Male Voices">{INWORLD_VOICES.male.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                                </select>
-                                <button onClick={() => auditionVoice(voiceMap[char] || 'Abby', char)} className="px-3 py-2 border rounded-lg text-[10px] font-black hover:bg-gray-100">▶︎</button>
-                            </div>
+                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || 'Abby'} onChange={e => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                <optgroup label="Female Voices">{INWORLD_VOICES.female.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                <optgroup label="Male Voices">{INWORLD_VOICES.male.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                            </select>
                         </div>
                     ))}
                 </aside>
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 scrollbar-thin">
                     <div className="max-w-2xl mx-auto min-h-full">
-                        {parseStatus === 'parsing' || parseStatus === 'casting' ? <Spinner label={parseStatus === 'parsing' ? 'Reading script…' : 'AI casting…'} /> : 
-                        segments.map((seg, i) => (
+                        {segments.map((seg, i) => (
                             <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 transition-all ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-50'}`}>
                                 {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
                                 <p className="text-xl font-serif text-gray-800 leading-relaxed">{seg.text}</p>
@@ -305,8 +278,11 @@ const Scriptread = () => {
                     </div>
                 </main>
             </div>
-            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center shrink-0 z-50">
+            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
+                <button onClick={() => { stopAudio(); setCurrentIdx(-1); }} className="text-gray-400 hover:text-black">RESTART</button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="text-gray-400 hover:text-black">SKIP BACK</button>
                 <button onClick={() => { if (isPlaying) stopAudio(); else { isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx < 0 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl font-black">{isPlaying ? "PAUSE" : "PLAY"}</button>
+                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="text-gray-400 hover:text-black">SKIP FORWARD</button>
             </footer>
         </div>
     );
