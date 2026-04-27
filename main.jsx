@@ -52,42 +52,12 @@ const Scriptread = () => {
         if (isPaid) {
             setIsUnlocked(true); setShowPaywall(false); setTotalSeconds(-99999);
             localStorage.setItem('sr_full_access', 'true');
-            if (params.get('status')) window.history.replaceState({}, document.title, window.location.pathname);
         }
-        const s_seg = sessionStorage.getItem('sr_cache_seg');
-        const s_char = sessionStorage.getItem('sr_cache_char');
-        const s_map = sessionStorage.getItem('sr_cache_map');
-        if (s_seg && s_char && s_map) {
-            setSegments(JSON.parse(s_seg));
-            setCharacters(JSON.parse(s_char));
-            setVoiceMap(JSON.parse(s_map));
-        }
+        audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         const firstClick = () => handleFirstInteraction();
         window.addEventListener('mousedown', firstClick);
         return () => window.removeEventListener('mousedown', firstClick);
     }, []);
-
-    useEffect(() => {
-        if (segments.length > 0) {
-            sessionStorage.setItem('sr_cache_seg', JSON.stringify(segments));
-            sessionStorage.setItem('sr_cache_char', JSON.stringify(characters));
-            sessionStorage.setItem('sr_cache_map', JSON.stringify(voiceMap));
-        }
-    }, [segments, characters, voiceMap]);
-
-    useEffect(() => {
-        audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-    }, []);
-
-    useEffect(() => {
-        if (currentIdx !== -1 && segmentRefs.current[currentIdx]) {
-            segmentRefs.current[currentIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    }, [currentIdx]);
-
-    useEffect(() => {
-        if (!isUnlocked && totalSeconds >= 90) { stopAudio(); setShowPaywall(true); }
-    }, [totalSeconds, isUnlocked]);
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
@@ -110,7 +80,7 @@ const Scriptread = () => {
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
         try {
-            const buffer = await fetchAudio("Welcome to Script-reed Pro. Your professional table read starts now.", "Serena");
+            const buffer = await fetchAudio("Welcome to Script-reed Pro.", "Serena");
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
@@ -121,7 +91,7 @@ const Scriptread = () => {
     const auditionVoice = async (voiceId, charName) => {
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
         try {
-            const buffer = await fetchAudio(`Hello, I am auditioning for the role of ${charName}.`, voiceId);
+            const buffer = await fetchAudio(`Auditioning for ${charName}.`, voiceId);
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
@@ -150,50 +120,36 @@ const Scriptread = () => {
         } catch (e) { if(isPlayingRef.current) playSegment(index + 1); }
     };
 
-    const analyzeCharacterGenders = async (charData) => {
-        if (!GEMINI_KEY) return null;
-        setIsAnalyzing(true);
-        try {
-            const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const prompt = `Return ONLY valid JSON. No explanation. No markdown. Format: {"CHARACTER": "male", "CHARACTER2": "female"}. Evidence: ${charData.map(c => `- ${c.name}: "${c.evidence}"`).join("\n")}`;
-            const result = await model.generateContent(prompt);
-            const text = result.response.text().replace(/```json|```/g, "").trim();
-            try { return JSON.parse(text); } catch (e) { return null; }
-        } catch (e) { return null; }
-        finally { setIsAnalyzing(false); }
-    };
-
     const parseScript = async (lines) => {
         const finalBlocks = [];
         let actionBuffer = "";
         let currentSpeaker = null;
-        const charOccurrenceIndices = new Map();
         const potentialCharacters = new Set();
+        const charOccurrenceIndices = new Map();
 
         const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
-        const invalid = /^(INT|EXT|DAY|NIGHT|SCENE|CUT|FADE|ACT|ROOM|THE END|CONTINUED|BACK TO|KITCHEN|HALLWAY|BEDROOM|TITLE)/i;
+        
+        // Strict exclusion for montages, scene data, and single letters
+        const invalid = /^(INT|EXT|DAY|NIGHT|SCENE|CUT|FADE|ACT|ROOM|THE END|CONTINUED|BACK TO|TITLE|BEGIN|END|MONTAGE|^.$)/i;
 
         for (let i = 0; i < lines.length; i++) {
             let t = lines[i].text.trim();
             if (!t || /^(\d+|Page \d+)$/i.test(t)) continue;
-            
-            const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             const x = lines[i].x || 0;
 
+            // 1. BROAD SLASH-NAME DETECTION (Handles MICHAEL/COTTON)
+            const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             let isCharDetected = false;
             let cleanName = "";
 
-            // 1. SIMPLE CHARACTER DETECTION
-            if (isUpper && t.length > 1 && t.length < 25 && !invalid.test(t)) {
-                // Peek ahead for dialogue within next 2 lines
+            if (isUpper && t.length > 1 && t.length < 30 && !invalid.test(t)) {
+                // Peek ahead for dialogue (must be indented or follows name directly)
                 for (let j = i + 1; j <= Math.min(i + 2, lines.length - 1); j++) {
                     const peekText = lines[j].text.trim();
                     if (!peekText) continue;
-                    // Dialogue is usually not all uppercase
-                    if (peekText !== peekText.toUpperCase()) {
+                    if (peekText !== peekText.toUpperCase() || lines[j].x > 180) {
                         isCharDetected = true;
-                        cleanName = t.replace(/\([^)]*\)/g, "").replace(/[^a-zA-Z0-9\s]/g, "").trim();
+                        cleanName = t.replace(/\([^)]*\)/g, "").trim();
                         break;
                     }
                 }
@@ -205,107 +161,45 @@ const Scriptread = () => {
                 potentialCharacters.add(cleanName);
                 finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
             } 
-            // 2. DIALOGUE CONTINUATION RULES
             else if (currentSpeaker) {
+                // 2. DIALOGUE CONTINUATION (Stops action bleed)
                 const isParenthetical = t.startsWith("(") && t.endsWith(")");
                 const isNotUpper = t !== t.toUpperCase() || !/[A-Z]/.test(t);
+                const isDialogueRange = x > 160 && x < 420;
                 
-                if (isNotUpper || isParenthetical) {
+                if ((isNotUpper || isParenthetical) && isDialogueRange && t.length < 150) {
                     finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + t;
-                    // Track for evidence mapping
                     if (!charOccurrenceIndices.has(currentSpeaker)) charOccurrenceIndices.set(currentSpeaker, []);
-                    if (!charOccurrenceIndices.get(currentSpeaker).includes(i)) charOccurrenceIndices.get(currentSpeaker).push(i);
+                    charOccurrenceIndices.get(currentSpeaker).push(i);
                 } else {
-                    // Break dialogue, return to narrator
                     currentSpeaker = null;
                     actionBuffer += (actionBuffer ? " " : "") + t;
                 }
             } 
-            // 3. DEFAULT TO NARRATOR
             else {
                 actionBuffer += (actionBuffer ? " " : "") + t;
             }
         }
         flush();
 
-        // VALIDATION: Only keep characters that actually speak
+        // Validate characters who actually spoke
         const detectedCharacters = Array.from(potentialCharacters).filter(name => {
-            return finalBlocks.some(b => 
-                b.type === 'dialogue' && 
-                b.character === name && 
-                b.text && 
-                b.text.trim().length > 1
-            );
+            return finalBlocks.some(b => b.type === 'dialogue' && b.character === name && b.text.trim().length > 1);
         });
 
-        // Evidence Collection for Casting
-        const globalEvidence = {};
-        detectedCharacters.forEach(name => {
-            const indices = charOccurrenceIndices.get(name) || [];
-            const collectedLines = new Set();
-            indices.forEach(idx => {
-                for (let k = Math.max(0, idx - 2); k <= Math.min(idx + 2, lines.length - 1); k++) {
-                    collectedLines.add(lines[k].text);
-                }
-            });
-            globalEvidence[name] = Array.from(collectedLines).join(" ");
-        });
-
-        const charEvidenceArray = detectedCharacters.map(name => ({
-            name,
-            evidence: globalEvidence[name] || ""
-        }));
-        
-        const aiCastingResults = await analyzeCharacterGenders(charEvidenceArray);
-
-        const normalizedAiResults = {};
-        if (aiCastingResults) {
-            Object.keys(aiCastingResults).forEach(key => {
-                normalizedAiResults[key.toUpperCase()] = aiCastingResults[key].toLowerCase();
-            });
-        }
-
-        const maleNames = ["ROBERT", "MICHAEL", "JAMES", "DAVID", "JOHN", "FRANK", "ZACK", "OLEG", "RICHARD", "SIMON", "PETER", "STEVE", "GARY", "MIKE", "CHRIS", "MARK", "PAUL", "KEVIN", "JASON", "BRIAN"];
-        const femaleNames = ["DEE", "DANICA", "SARAH", "JESSICA", "AMY", "FELICITY", "TULIP", "MARY", "LINDA", "SUSAN", "BARBARA", "KAREN", "EMILY", "KATHY", "LISA", "NANCY", "BETTY", "SANDRA"];
-
+        // Simple casting logic based on name heuristics
         let newMap = { ...voiceMap };
         detectedCharacters.forEach((name) => {
-            const upperName = name.toUpperCase();
-            const evidenceText = (globalEvidence[name] || "").toLowerCase();
-            let gender = null;
-
-            if (normalizedAiResults[upperName]) {
-                gender = normalizedAiResults[upperName].includes('male') && !normalizedAiResults[upperName].includes('female') ? 'male' : 'female';
-            }
-
-            if (!gender) {
-                const maleMatch = evidenceText.match(/\b(he|him|his|man|father|boy|mr|guy)\b/g);
-                const femaleMatch = evidenceText.match(/\b(she|her|hers|woman|girl|mother|ms|mrs|lady)\b/g);
-                if (maleMatch && (!femaleMatch || maleMatch.length > femaleMatch.length)) gender = 'male';
-                else if (femaleMatch && (!maleMatch || femaleMatch.length > maleMatch.length)) gender = 'female';
-            }
-
-            if (!gender) {
-                if (maleNames.includes(upperName)) gender = 'male';
-                else if (femaleNames.includes(upperName)) gender = 'female';
-                else {
-                    if (upperName.endsWith('A') || upperName.endsWith('IE') || upperName.endsWith('Y') || upperName.endsWith('AH')) gender = 'female';
-                    else if (/[ORNDLKM]$/.test(upperName)) gender = 'male';
-                }
-            }
-
-            const nameHash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-            if (!gender) {
-                gender = nameHash % 2 === 0 ? 'male' : 'female';
-            }
-
+            const n = name.toLowerCase();
+            const gender = (n.endsWith('a') || n.endsWith('ie') || n.endsWith('y') || n.includes('dee')) ? 'female' : 'male';
             const pool = INWORLD_VOICES[gender];
-            newMap[name] = pool[nameHash % pool.length].id;
+            const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+            newMap[name] = pool[hash % pool.length].id;
         });
 
         setVoiceMap(newMap);
         setCharacters(detectedCharacters.sort());
-        setSegments(finalBlocks.filter(b => b.text && b.text.trim().length > 0));
+        setSegments(finalBlocks.filter(b => b.text.trim().length > 0));
         setCurrentIdx(-1);
     };
 
@@ -339,12 +233,6 @@ const Scriptread = () => {
 
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
-            {isAnalyzing && (
-                <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-blue-600 text-white backdrop-blur-md">
-                    <div className="animate-spin rounded-full h-24 w-24 border-8 border-white border-t-transparent mb-8"></div>
-                    <h2 className="text-3xl font-black uppercase italic tracking-tighter">AI Production Scan</h2>
-                </div>
-            )}
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center animate-in fade-in duration-500">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
@@ -353,7 +241,6 @@ const Scriptread = () => {
                         <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank">
                             <input type="submit" value="Unlock Script - $3.00" className="bg-[#FFD140] font-bold py-4 px-12 rounded-lg cursor-pointer hover:scale-105 transition-all" />
                         </form>
-                        <button onClick={() => setShowPaywall(false)} className="mt-4 text-xs underline font-bold text-gray-400 uppercase">Return</button>
                     </div>
                 </div>
             )}
@@ -361,13 +248,10 @@ const Scriptread = () => {
                 <div className="flex items-center gap-4">
                     <LogoIcon size="40" />
                     <h1 className="text-3xl font-black uppercase italic tracking-tight italic">Scriptread <span className="text-blue-600">Pro</span></h1>
-                    <div className={`${isUnlocked ? 'bg-green-600' : 'bg-blue-600'} text-white px-3 py-1 text-[10px] font-bold uppercase rounded-full ml-4 italic shadow-sm`}>
-                        {isUnlocked ? "Full Access" : `Preview: ${Math.round(totalSeconds < 0 ? 0 : totalSeconds)}s / 90s`}
-                    </div>
                 </div>
                 <div className="flex gap-4">
                     <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
-                        {isExporting ? `Mastering ${exportProgress}%` : "Master WAV"}
+                        {isExporting ? "Exporting..." : "Master WAV"}
                     </button>
                     <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
                             const file = e.target.files[0]; const reader = new FileReader();
@@ -384,40 +268,26 @@ const Scriptread = () => {
                 </div>
             </header>
             <div className="flex-1 flex overflow-hidden">
-                <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-hidden">
-                    <div className="p-5 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-widest font-bold">Cast List</div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin">
-                        <div className="p-4 bg-gray-50 rounded-xl border">
-                            <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-blue-600">Narrator</p><button onClick={() => auditionVoice(voiceMap.Narrator, "Narrator")} className="bg-blue-600 text-white p-1 rounded-full hover:scale-110 shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap.Narrator} onChange={(e) => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                {INWORLD_VOICES.narrators.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-hidden p-5">
+                    <div className="font-black uppercase text-[10px] text-gray-400 mb-4 tracking-widest">Production Cast</div>
+                    {characters.map(char => (
+                        <div key={char} className="p-4 bg-gray-50 rounded-xl border mb-3">
+                            <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
+                            <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
                             </select>
                         </div>
-                        {characters.map(char => (
-                            <div key={char} className="p-4 bg-gray-50 rounded-xl border">
-                                <div className="flex justify-between items-center mb-2"><p className="text-[10px] font-black uppercase text-gray-500">{char}</p><button onClick={() => auditionVoice(voiceMap[char] || "Abby", char)} className="bg-gray-800 text-white p-1 rounded-full hover:scale-110 shadow-md"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div>
-                                <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || "Abby"} onChange={(e) => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    <optgroup label="Female">{INWORLD_VOICES.female.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                                    <optgroup label="Male">{INWORLD_VOICES.male.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                                </select>
-                            </div>
-                        ))}
-                    </div>
+                    ))}
                 </aside>
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 scrollbar-thin">
                     <div className="max-w-2xl mx-auto min-h-full flex flex-col">
-                        {segments.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-20 animate-fade-in"><LogoIcon size="120" /><h2 className="text-5xl font-black uppercase italic mb-4 tracking-tighter">Welcome to Scriptread Pro</h2></div>
-                        ) : (
-                            <div className="space-y-6 pb-[50vh]">{segments.map((seg, i) => (<div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>{seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}<p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p></div>))}</div>
-                        )}
+                        {segments.map((seg, i) => (<div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-40'} transition-all duration-300`}>{seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}<p className="text-xl font-serif text-gray-800 uppercase leading-relaxed">{seg.text}</p></div>))}
                     </div>
                 </main>
             </div>
             <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.max(0, currentIdx - 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m11 17-5-5 5-5m7 10-5-5 5-5"/></svg></button>
-                <button onClick={() => { if (isPlaying) stopAudio(); else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl font-black">{isPlaying ? <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>}</button>
-                <button onClick={() => { stopAudio(); setCurrentIdx(Math.min(segments.length - 1, currentIdx + 1)); }} className="hover:scale-110 transition-transform"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg></button>
+                <button onClick={() => { if (isPlaying) stopAudio(); else { if (audioContext.current.state === 'suspended') audioContext.current.resume(); isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx === -1 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl font-black">{isPlaying ? "PAUSE" : "PLAY"}</button>
             </footer>
         </div>
     );
