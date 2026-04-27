@@ -9,6 +9,7 @@ const INWORLD_VOICES = {
         { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
     ],
     female: [
+        { id: "Daneeka", name: "Daneeka" }, { id: "Serena", name: "Serena" }, { id: "Selene", name: "Selene" },
         { id: "Abby", name: "Abby" }, { id: "Amina", name: "Amina" }, { id: "Anjali", name: "Anjali" },
         { id: "Ashley", name: "Ashley" }, { id: "Bianca", name: "Bianca" }, { id: "Celeste", name: "Celeste" },
         { id: "Chloe", name: "Chloe" }, { id: "Claire", name: "Claire" }, { id: "Darlene", name: "Darlene" },
@@ -19,10 +20,11 @@ const INWORLD_VOICES = {
         { id: "Miranda", name: "Miranda" }, { id: "Nadia", name: "Nadia" }, { id: "Naomi", name: "Naomi" },
         { id: "Olivia", name: "Olivia" }, { id: "Pippa", name: "Pippa" }, { id: "Pixie", name: "Pixie" },
         { id: "Riley", name: "Riley" }, { id: "Saanvi", name: "Saanvi" }, { id: "Sarah", name: "Sarah" },
-        { id: "Serena", name: "Serena" }, { id: "Sophie", name: "Sophie" }, { id: "Tessa", name: "Tessa" },
-        { id: "Veronica", name: "Veronica" }, { id: "Victoria", name: "Victoria" }
+        { id: "Sophie", name: "Sophie" }, { id: "Tessa", name: "Tessa" }, { id: "Veronica", name: "Veronica" }, 
+        { id: "Victoria", name: "Victoria" }
     ],
     male: [
+        { id: "Zack", name: "Zack" }, { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" },
         { id: "Alex", name: "Alex" }, { id: "Arjun", name: "Arjun" }, { id: "Avery", name: "Avery" },
         { id: "Blake", name: "Blake" }, { id: "Brandon", name: "Brandon" }, { id: "Brian", name: "Brian" },
         { id: "Callum", name: "Callum" }, { id: "Carter", name: "Carter" }, { id: "Cedric", name: "Cedric" },
@@ -59,7 +61,7 @@ const Spinner = ({ label }) => (
     </div>
 );
 
-const SLUG_WORDS = new Set(['INT','EXT','DAY','NIGHT','CUT','FADE','ACT','SCENE','THE','END','BEGIN','MONTAGE','TITLE','OVER']);
+const SLUG_WORDS = new Set(['INT','EXT','DAY','NIGHT','CUT','FADE','ACT','SCENE','THE','END','BEGIN','MONTAGE','TITLE','OVER','CONTINUED']);
 
 const Scriptread = () => {
     const [segments, setSegments] = useState([]);
@@ -119,7 +121,7 @@ const Scriptread = () => {
         hasGreetedRef.current = true;
         if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
         try { 
-            const buf = await fetchAudio('Welcome to Script-reed Pro.', 'Serena');
+            const buf = await fetchAudio('Welcome back to Script-reed Pro.', 'Serena');
             const src = audioCtx.current.createBufferSource();
             src.buffer = buf; src.connect(audioCtx.current.destination); src.start();
         } catch(_) { hasGreetedRef.current = false; }
@@ -190,14 +192,15 @@ const Scriptread = () => {
             const x = lines[i].x || 0;
             if (!t || /^(\d+)$/.test(t)) continue;
 
-            // Character Header Detection (Regex supports Slashes like MICHAEL/COTTON)
             const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             let isCharCue = false;
+            
+            // Tightened Character Header Detection
             if (isUpper && x > 100 && x < 380 && t.length < 40 && !SLUG_WORDS.has(t.split(' ')[0])) {
                 for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
                     const peek = lines[j].text.trim();
                     if (!peek) continue;
-                    if (peek.startsWith('(') || peek !== peek.toUpperCase()) { isCharCue = true; break; }
+                    if (peek.startsWith('(') || peek !== peek.toUpperCase() || lines[j].x > 180) { isCharCue = true; break; }
                     break;
                 }
             }
@@ -212,11 +215,12 @@ const Scriptread = () => {
             if (currentChar) {
                 const isParen = t.startsWith('(') && t.endsWith(')');
                 const isMixed = t !== t.toUpperCase() || !/[A-Z]/.test(t);
+                // If it looks like dialogue or a parenthetical, stay with character
                 if ((isMixed || isParen) && x > 72 && x < 470) {
                     if (!isParen) blocks[blocks.length-1].text += (blocks[blocks.length-1].text ? ' ' : '') + t;
                     continue;
                 } else {
-                    currentChar = null; // HAND OFF TO NARRATOR
+                    currentChar = null; // DEFAULT TO NARRATOR HAND-OFF
                 }
             }
 
@@ -264,16 +268,6 @@ const Scriptread = () => {
 
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
-            {showPaywall && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
-                    <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
-                        <LogoIcon size="64" /><h2 className="text-4xl font-black uppercase italic mb-3 mt-4">Unlock Script</h2>
-                        <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank">
-                            <input type="submit" value="Unlock — $3.00" className="bg-[#FFD140] font-bold py-4 px-12 rounded-lg cursor-pointer border-2 border-black" />
-                        </form>
-                    </div>
-                </div>
-            )}
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shrink-0 z-50">
                 <div className="flex items-center gap-4"><LogoIcon size="40" /><h1 className="text-3xl font-black uppercase italic tracking-tight italic">Scriptread <span className="text-blue-600">Pro</span></h1></div>
                 <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer shadow-lg select-none">
@@ -282,19 +276,19 @@ const Scriptread = () => {
             </header>
             <div className="flex-1 flex overflow-hidden">
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-y-auto p-5">
-                    <div className="font-black uppercase text-[10px] text-gray-400 mb-3 tracking-widest">Narrator</div>
-                    <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg mb-5" value={voiceMap.Narrator} onChange={e => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                    <div className="font-black uppercase text-[10px] text-gray-400 mb-3 tracking-widest">Narrator Control</div>
+                    <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg mb-5 outline-none" value={voiceMap.Narrator} onChange={e => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
                         {INWORLD_VOICES.narrators.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
                     </select>
                     {characters.map(char => (
                         <div key={char} className="p-4 bg-gray-50 rounded-xl border mb-3">
                             <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
                             <div className="flex gap-2">
-                                <select className="flex-1 bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || 'Abby'} onChange={e => setVoiceMap({...voiceMap, [char]: e.target.value})}>
-                                    <optgroup label="Female">{INWORLD_VOICES.female.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                                    <optgroup label="Male">{INWORLD_VOICES.male.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                <select className="flex-1 bg-white border p-2 font-bold text-xs rounded-lg outline-none" value={voiceMap[char] || 'Abby'} onChange={e => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                                    <optgroup label="Female Voices">{INWORLD_VOICES.female.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
+                                    <optgroup label="Male Voices">{INWORLD_VOICES.male.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
                                 </select>
-                                <button onClick={() => auditionVoice(voiceMap[char] || 'Abby', char)} className="px-3 py-2 border rounded-lg text-[10px] font-black">▶︎</button>
+                                <button onClick={() => auditionVoice(voiceMap[char] || 'Abby', char)} className="px-3 py-2 border rounded-lg text-[10px] font-black hover:bg-gray-100">▶︎</button>
                             </div>
                         </div>
                     ))}
@@ -303,7 +297,7 @@ const Scriptread = () => {
                     <div className="max-w-2xl mx-auto min-h-full">
                         {parseStatus === 'parsing' || parseStatus === 'casting' ? <Spinner label={parseStatus === 'parsing' ? 'Reading script…' : 'AI casting…'} /> : 
                         segments.map((seg, i) => (
-                            <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 transition-all ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl' : 'border-transparent opacity-50'}`}>
+                            <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 transition-all ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-50'}`}>
                                 {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
                                 <p className="text-xl font-serif text-gray-800 leading-relaxed">{seg.text}</p>
                             </div>
@@ -311,8 +305,8 @@ const Scriptread = () => {
                     </div>
                 </main>
             </div>
-            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
-                <button onClick={handlePlayPause} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl font-black">{isPlaying ? "PAUSE" : "PLAY"}</button>
+            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center shrink-0 z-50">
+                <button onClick={() => { if (isPlaying) stopAudio(); else { isPlayingRef.current = true; setIsPlaying(true); playSegment(currentIdx < 0 ? 0 : currentIdx); } }} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl font-black">{isPlaying ? "PAUSE" : "PLAY"}</button>
             </footer>
         </div>
     );
