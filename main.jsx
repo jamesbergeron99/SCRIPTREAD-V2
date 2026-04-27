@@ -59,111 +59,53 @@ const Spinner = ({ label }) => (
     </div>
 );
 
-// ─── Slug/transition keywords — these are NEVER character names ───────────────
-const SLUG_WORDS = new Set([
-    'INT','EXT','DAY','NIGHT','DAWN','DUSK','CONTINUOUS','LATER','MOMENTS',
-    'CUT','FADE','DISSOLVE','SMASH','WIPE','TITLE','OVER','BACK','END',
-    'BEGIN','ACT','SCENE','THE','EPILOGUE','PROLOGUE','CONTINUED','INTERCUT',
-    'FLASHBACK','FLASH','FORWARD','MONTAGE','SERIES','SHOTS','SPLIT','SCREEN',
-    'PUSH','PULL','INSERT','CLOSE','MEDIUM','WIDE','POV','ANGLE','ANOTHER',
-    'SAME','OMITTED','NOTE','REVISED','DRAFT','PHONE','CONVERSATION',
-    'DREAM','HALLUCINATION','MEMORY','VISION','CAPTION','SUPER','TEXT',
-    'MOTION','FAST','SLOW','ROOM','HOUSE','HOTEL','CLUB','CAR','STREET',
-    'OFFICE','STORE','BANK','HOSPITAL','AIRPORT','BATHROOM','BEDROOM',
-    'KITCHEN','HALLWAY','CORRIDOR','STAIRWELL','PARKING','LOT','LOFT',
-    'WAREHOUSE','SALON','DRESSING','BOOTH','STAGE',
-]);
-
-// ─── Valid character name check ───────────────────────────────────────────────
-// Accepts: ALL CAPS, 2–40 chars, no sentence punctuation, not all slug words, ≤5 words
-function isValidCharacterName(raw) {
-    const cleaned = raw.replace(/\s*\([^)]*\)\s*$/g, '').trim(); // strip (V.O.) etc.
-    if (cleaned.length < 2 || cleaned.length > 40) return false;
-    if (!/^[A-Z][A-Z\s'\-/]*$/.test(cleaned)) return false;   // only caps/space/hyphen/slash
-    if (/[.!?,;:]/.test(raw)) return false;                     // sentence punctuation → not a name
-    if (!/[A-Z]{2}/.test(cleaned)) return false;               // needs at least two consecutive caps
-    const words = cleaned.split(/[\s/]+/).filter(Boolean);
-    if (words.length > 5) return false;
-    if (words.every(w => SLUG_WORDS.has(w))) return false;     // all slug words → not a name
-    return true;
-}
-
-// ─── x-position constants ─────────────────────────────────────────────────────
-// Widened character cue range to catch all Final Draft layouts.
-// The lookahead (must be followed by dialogue) is the real filter.
-const CHAR_X_MIN  = 100;   // anything left of action margin (≈72) is unlikely
-const CHAR_X_MAX  = 380;   // wider right bound to catch odd PDF exports
-const DIAL_X_MIN  = 72;
-const DIAL_X_MAX  = 470;
+const SLUG_WORDS = new Set(['INT','EXT','DAY','NIGHT','CUT','FADE','ACT','SCENE','THE','END','BEGIN','MONTAGE','TITLE','OVER']);
 
 const Scriptread = () => {
-    const [segments, setSegments]         = useState([]);
-    const [characters, setCharacters]     = useState([]);
-    const [voiceMap, setVoiceMap]         = useState({ Narrator: 'Serena' });
-    const [isPlaying, setIsPlaying]       = useState(false);
-    const [currentIdx, setCurrentIdx]     = useState(-1);
+    const [segments, setSegments] = useState([]);
+    const [characters, setCharacters] = useState([]);
+    const [voiceMap, setVoiceMap] = useState({ Narrator: 'Serena' });
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentIdx, setCurrentIdx] = useState(-1);
     const [totalSeconds, setTotalSeconds] = useState(0);
-    const [isUnlocked, setIsUnlocked]     = useState(false);
-    const [showPaywall, setShowPaywall]   = useState(false);
-    const [isExporting, setIsExporting]   = useState(false);
+    const [isUnlocked, setIsUnlocked] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
-    const [parseStatus, setParseStatus]   = useState('idle');
+    const [parseStatus, setParseStatus] = useState('idle');
     const [previewingChar, setPreviewingChar] = useState(null);
 
-    const audioCtx      = useRef(null);
-    const activeSource  = useRef(null);
-    const isPlayingRef  = useRef(false);
-    const segmentRefs   = useRef([]);
+    const audioCtx = useRef(null);
+    const activeSource = useRef(null);
+    const isPlayingRef = useRef(false);
+    const segmentRefs = useRef([]);
     const hasGreetedRef = useRef(false);
-    const audioCache    = useRef({});
+    const audioCache = useRef({});
 
-    const API_KEY    = import.meta.env.VITE_INWORLD_KEY;
+    const API_KEY = import.meta.env.VITE_INWORLD_KEY;
     const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const paid   = params.get('status') === 'success' || localStorage.getItem('sr_full_access') === 'true';
+        const paid = params.get('status') === 'success' || localStorage.getItem('sr_full_access') === 'true';
         if (paid) { setIsUnlocked(true); localStorage.setItem('sr_full_access', 'true'); }
         audioCtx.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        const onFirst = () => handleFirstInteraction();
-        window.addEventListener('mousedown', onFirst, { once: true });
-        return () => { window.removeEventListener('mousedown', onFirst); audioCtx.current?.close(); };
+        return () => audioCtx.current?.close();
     }, []);
-
-    // ── Audio helpers ─────────────────────────────────────────────────────────
-    const resumeCtx = async () => {
-        if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
-    };
 
     const fetchAudio = async (text, voiceId) => {
         const key = `${voiceId}||${text}`;
         if (audioCache.current[key]) return audioCache.current[key];
-        const cleaned = text
-            .replace(/\bEXT\b\.?/gi, 'Exterior')
-            .replace(/\bINT\b\.?/gi, 'Interior')
-            .replace(/\bScriptread\b/gi, 'Script-reed');
+        const cleaned = text.replace(/\bEXT\b\.?/gi, 'Exterior').replace(/\bINT\b\.?/gi, 'Interior').replace(/\bScriptread\b/gi, 'Script-reed');
         const resp = await fetch('https://api.inworld.ai/tts/v1/voice', {
             method: 'POST',
             headers: { 'Authorization': `Basic ${API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: cleaned, voiceId: voiceId || 'Abby', modelId: 'inworld-tts-1.5-max' })
         });
-        const data   = await resp.json();
-        const buffer = await audioCtx.current.decodeAudioData(
-            new Uint8Array(atob(data.audioContent).split('').map(c => c.charCodeAt(0))).buffer
-        );
+        const data = await resp.json();
+        const buffer = await audioCtx.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split('').map(c => c.charCodeAt(0))).buffer);
         audioCache.current[key] = buffer;
         return buffer;
-    };
-
-    const playBuffer = (buffer, onEnded) => {
-        if (activeSource.current) { try { activeSource.current.stop(); } catch(_){} }
-        const src = audioCtx.current.createBufferSource();
-        src.buffer = buffer;
-        src.connect(audioCtx.current.destination);
-        src.onended = onEnded || null;
-        activeSource.current = src;
-        src.start();
-        return src;
     };
 
     const stopAudio = () => {
@@ -175,136 +117,87 @@ const Scriptread = () => {
     const handleFirstInteraction = async () => {
         if (hasGreetedRef.current) return;
         hasGreetedRef.current = true;
-        await resumeCtx();
-        try { playBuffer(await fetchAudio('Welcome to Script-reed Pro.', 'Serena')); }
-        catch(_) { hasGreetedRef.current = false; }
+        if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
+        try { 
+            const buf = await fetchAudio('Welcome to Script-reed Pro.', 'Serena');
+            const src = audioCtx.current.createBufferSource();
+            src.buffer = buf; src.connect(audioCtx.current.destination); src.start();
+        } catch(_) { hasGreetedRef.current = false; }
     };
 
     const auditionVoice = async (voiceId, charName) => {
         setPreviewingChar(charName);
-        await resumeCtx();
+        if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
         try {
             stopAudio();
-            playBuffer(await fetchAudio(`Hi, I'm ${charName}.`, voiceId), () => setPreviewingChar(null));
+            const buf = await fetchAudio(`Hi, I'm ${charName}.`, voiceId);
+            const src = audioCtx.current.createBufferSource();
+            src.buffer = buf; src.connect(audioCtx.current.destination);
+            src.onended = () => setPreviewingChar(null);
+            src.start();
         } catch(_) { setPreviewingChar(null); }
     };
 
-    // ── Playback ──────────────────────────────────────────────────────────────
     const playSegment = async (index) => {
         if (!isUnlocked && totalSeconds >= 90) { stopAudio(); setShowPaywall(true); return; }
         if (!isPlayingRef.current || index >= segments.length) {
-            isPlayingRef.current = false; setIsPlaying(false); setCurrentIdx(-1); return;
+            isPlayingRef.current = false; setIsPlaying(false); return;
         }
         setCurrentIdx(index);
         segmentRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const seg   = segments[index];
+        const seg = segments[index];
         const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || 'Abby');
         try {
             const buf = await fetchAudio(seg.text, voice);
             if (!isPlayingRef.current) return;
-            playBuffer(buf, () => {
+            const src = audioCtx.current.createBufferSource();
+            src.buffer = buf; src.connect(audioCtx.current.destination);
+            src.onended = () => {
                 setTotalSeconds(prev => prev + buf.duration);
                 if (isPlayingRef.current) playSegment(index + 1);
-            });
+            };
+            activeSource.current = src; src.start();
         } catch(_) { if (isPlayingRef.current) playSegment(index + 1); }
     };
 
-    const handlePlayPause = async () => {
-        if (isPlaying) { stopAudio(); return; }
-        await resumeCtx();
-        isPlayingRef.current = true; setIsPlaying(true);
-        playSegment(currentIdx < 0 ? 0 : currentIdx);
-    };
-    const handleRestart = () => { stopAudio(); setCurrentIdx(-1); };
-    const handleSkipBack = () => {
-        const prev = Math.max(0, (currentIdx < 0 ? 0 : currentIdx) - 1);
-        stopAudio();
-        setTimeout(() => { isPlayingRef.current = true; setIsPlaying(true); playSegment(prev); }, 50);
-    };
-    const handleSkipForward = () => {
-        const next = Math.min(segments.length - 1, (currentIdx < 0 ? 0 : currentIdx) + 1);
-        stopAudio();
-        setTimeout(() => { isPlayingRef.current = true; setIsPlaying(true); playSegment(next); }, 50);
-    };
-
-    // ── Gemini gender classification ──────────────────────────────────────────
-    // KEY FIX: We send Title Case names to Gemini so it can recognise them,
-    // then normalise the returned keys back to UPPERCASE for lookup.
-    const classifyGenders = async (namesUppercase) => {
-        if (!namesUppercase.length) return {};
+    const classifyGenders = async (names) => {
+        if (!names.length || !GEMINI_KEY) return {};
         try {
             const genAI = new GoogleGenerativeAI(GEMINI_KEY);
             const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-            // Convert "ROBERT" → "Robert", "MICHAEL/COTTON" → "Michael/Cotton"
-            const toTitleCase = s => s.replace(/\b[A-Z]+/g, w => w[0] + w.slice(1).toLowerCase());
-            const titleNames  = namesUppercase.map(toTitleCase);
-
-            const prompt =
-                `You are a Hollywood casting assistant. Given these character names from a screenplay, ` +
-                `determine the most likely gender for each based solely on the name. ` +
-                `For slash names like "Michael/Cotton", base the gender on the first name only. ` +
-                `Reply ONLY with a valid JSON object — no markdown, no extra text. ` +
-                `Use exactly the names as given in the list as keys. ` +
-                `Format: {"Name": "male", "Name2": "female", ...}\n\n` +
-                `Character names: ${titleNames.join(', ')}`;
-
+            const prompt = `Return ONLY JSON: {"CHARACTER_NAME": "male/female"}. Based on: ${names.join(', ')}`;
             const result = await model.generateContent(prompt);
-            const raw    = result.response.text().trim().replace(/```json|```/g, '').trim();
+            const raw = result.response.text().trim().replace(/```json|```/g, '').trim();
             const parsed = JSON.parse(raw);
-
-            // Normalise keys back to UPPERCASE so they match our internal names
-            const normalised = {};
-            Object.entries(parsed).forEach(([k, v]) => {
-                normalised[k.toUpperCase()] = v.toLowerCase();
-            });
-            return normalised;
-        } catch(e) {
-            console.warn('Gemini gender classification failed:', e);
-            return {};
-        }
+            const normalized = {};
+            Object.entries(parsed).forEach(([k, v]) => { normalized[k.toUpperCase()] = v.toLowerCase(); });
+            return normalized;
+        } catch(e) { return {}; }
     };
 
-    // ── Script parser ─────────────────────────────────────────────────────────
     const parseScript = async (lines) => {
         setParseStatus('parsing');
-        audioCache.current = {};
-
-        const blocks      = [];
-        let   actionBuf   = '';
-        let   currentChar = null;
+        const blocks = [];
+        let actionBuf = '';
+        let currentChar = null;
 
         const flush = () => {
             if (actionBuf.trim()) { blocks.push({ type: 'narrator', text: actionBuf.trim() }); actionBuf = ''; }
         };
 
         for (let i = 0; i < lines.length; i++) {
-            const raw = lines[i].text;
-            const t   = raw.trim();
-            if (!t) continue;
-            if (/^(\d{1,3}\.?)$/.test(t)) continue; // skip page numbers
-
+            const t = lines[i].text.trim();
             const x = lines[i].x || 0;
+            if (!t || /^(\d+)$/.test(t)) continue;
 
-            // ── Character cue? ────────────────────────────────────────────────
-            // Conditions:
-            //   1. ALL CAPS text
-            //   2. x-position in the character cue range (wider now)
-            //   3. Passes the name validator (no punctuation, not all slug words, ≤5 words)
-            //   4. The next non-blank line is mixed-case dialogue OR a parenthetical
+            // Character Header Detection (Regex supports Slashes like MICHAEL/COTTON)
+            const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             let isCharCue = false;
-            if (
-                t === t.toUpperCase() &&
-                x >= CHAR_X_MIN && x <= CHAR_X_MAX &&
-                isValidCharacterName(t)
-            ) {
+            if (isUpper && x > 100 && x < 380 && t.length < 40 && !SLUG_WORDS.has(t.split(' ')[0])) {
                 for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
-                    const peek  = lines[j].text.trim();
-                    const peekX = lines[j].x || 0;
+                    const peek = lines[j].text.trim();
                     if (!peek) continue;
-                    if (peek.startsWith('(') && peek.endsWith(')')) { isCharCue = true; break; }
-                    const hasMixed = peek !== peek.toUpperCase();
-                    if (hasMixed && peekX >= DIAL_X_MIN && peekX <= DIAL_X_MAX) { isCharCue = true; }
+                    if (peek.startsWith('(') || peek !== peek.toUpperCase()) { isCharCue = true; break; }
                     break;
                 }
             }
@@ -316,22 +209,15 @@ const Scriptread = () => {
                 continue;
             }
 
-            // ── Dialogue continuation ──────────────────────────────────────────
             if (currentChar) {
-                const isParen   = t.startsWith('(') && t.endsWith(')');
-                const isMixed   = t !== t.toUpperCase() || !/[A-Z]/.test(t);
-                const inDialCol = x >= DIAL_X_MIN && x <= DIAL_X_MAX;
-
-                if ((isMixed || isParen) && inDialCol && t.length < 250) {
-                    if (!isParen) {
-                        const last = blocks[blocks.length - 1];
-                        last.text += (last.text ? ' ' : '') + t;
-                    }
+                const isParen = t.startsWith('(') && t.endsWith(')');
+                const isMixed = t !== t.toUpperCase() || !/[A-Z]/.test(t);
+                if ((isMixed || isParen) && x > 72 && x < 470) {
+                    if (!isParen) blocks[blocks.length-1].text += (blocks[blocks.length-1].text ? ' ' : '') + t;
+                    continue;
                 } else {
-                    currentChar = null;
-                    actionBuf  += (actionBuf ? ' ' : '') + t;
+                    currentChar = null; // HAND OFF TO NARRATOR
                 }
-                continue;
             }
 
             actionBuf += (actionBuf ? ' ' : '') + t;
@@ -339,268 +225,94 @@ const Scriptread = () => {
         flush();
 
         const finalBlocks = blocks.filter(b => b.text.trim().length > 0);
-        const uniqueNames = [...new Set(
-            finalBlocks.filter(b => b.type === 'dialogue').map(b => b.character)
-        )].sort();
-
-        // ── Gemini casting (gender keys normalised to UPPERCASE) ──────────────
+        const uniqueNames = [...new Set(finalBlocks.filter(b => b.type === 'dialogue').map(b => b.character))];
+        
         setParseStatus('casting');
         const genderMap = await classifyGenders(uniqueNames);
-
-        const nameHash = name => name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        const nameHash = n => n.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
 
         const newVoiceMap = { Narrator: voiceMap.Narrator };
         uniqueNames.forEach(name => {
-            // genderMap keys are UPPERCASE — direct lookup works now
-            const gender = (genderMap[name] || 'unknown').toLowerCase();
-            const pool   = gender === 'male' ? INWORLD_VOICES.male : INWORLD_VOICES.female;
+            const gender = genderMap[name.toUpperCase()] || (name.toLowerCase().endsWith('a') ? 'female' : 'male');
+            const pool = gender === 'male' ? INWORLD_VOICES.male : INWORLD_VOICES.female;
             newVoiceMap[name] = pool[nameHash(name) % pool.length].id;
         });
 
         setVoiceMap(newVoiceMap);
-        setCharacters(uniqueNames);
+        setCharacters(uniqueNames.sort());
         setSegments(finalBlocks);
-        setCurrentIdx(-1);
-        setTotalSeconds(0);
         setParseStatus('ready');
     };
 
-    // ── PDF load ──────────────────────────────────────────────────────────────
     const handlePdfLoad = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         handleFirstInteraction();
         const reader = new FileReader();
         reader.onload = async () => {
-            const pdf   = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
+            const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
             const lines = [];
             for (let i = 1; i <= Math.min(pdf.numPages, 120); i++) {
-                const page    = await pdf.getPage(i);
+                const page = await pdf.getPage(i);
                 const content = await page.getTextContent();
                 content.items.forEach(item => lines.push({ text: item.str, x: item.transform[4] }));
             }
             parseScript(lines);
         };
         reader.readAsArrayBuffer(file);
-        e.target.value = '';
     };
-
-    // ── WAV export ────────────────────────────────────────────────────────────
-    const masterAndExport = async () => {
-        if (!isUnlocked) { setShowPaywall(true); return; }
-        setIsExporting(true); setExportProgress(0);
-        const buffers = [];
-        try {
-            for (let i = 0; i < segments.length; i++) {
-                setExportProgress(Math.round((i / segments.length) * 100));
-                const seg = segments[i];
-                const v   = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || 'Abby');
-                buffers.push(await fetchAudio(seg.text, v));
-            }
-            const totalLen = buffers.reduce((a, b) => a + b.length, 0);
-            const master   = audioCtx.current.createBuffer(1, totalLen, 24000);
-            const ch       = master.getChannelData(0);
-            let off = 0;
-            buffers.forEach(b => { ch.set(b.getChannelData(0), off); off += b.length; });
-            const wavLen = master.length * 2;
-            const view   = new DataView(new ArrayBuffer(44 + wavLen));
-            const ws = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
-            ws(0,'RIFF'); view.setUint32(4,36+wavLen,true); ws(8,'WAVE'); ws(12,'fmt ');
-            view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
-            view.setUint32(24,24000,true); view.setUint32(28,48000,true);
-            view.setUint16(32,2,true); view.setUint16(34,16,true); ws(36,'data'); view.setUint32(40,wavLen,true);
-            const d = master.getChannelData(0); let o2 = 44;
-            for (let i = 0; i < d.length; i++, o2+=2) {
-                const s = Math.max(-1,Math.min(1,d[i]));
-                view.setInt16(o2, s < 0 ? s*0x8000 : s*0x7FFF, true);
-            }
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(new Blob([view.buffer],{type:'audio/wav'}));
-            link.download = 'Scriptread_Master.wav'; link.click();
-        } catch(_) {}
-        finally { setIsExporting(false); }
-    };
-
-    const canPlay = parseStatus === 'ready' && segments.length > 0;
 
     return (
         <div className="flex flex-col h-screen w-screen bg-[#f8f9fa] text-[#212529] font-sans overflow-hidden fixed inset-0">
-
-            {/* Paywall */}
             {showPaywall && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/95 backdrop-blur-lg p-10 text-center">
                     <div className="bg-white border-2 border-black p-12 shadow-[20px_20px_0px_0px_rgba(37,99,235,1)] max-w-xl rounded-3xl">
-                        <LogoIcon size="64" />
-                        <h2 className="text-4xl font-black uppercase italic mb-3 mt-4">Unlock your script</h2>
-                        <p className="text-gray-500 mb-8 text-sm">You've used your free 90-second preview. Unlock the full read for $3.</p>
-                        <div className="flex gap-3 justify-center">
-                            <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank">
-                                <input type="submit" value="Unlock — $3.00"
-                                    className="bg-[#FFD140] font-bold py-4 px-12 rounded-lg cursor-pointer hover:scale-105 transition-all border-2 border-black" />
-                            </form>
-                            <button onClick={() => setShowPaywall(false)}
-                                className="px-6 py-4 border-2 border-black rounded-lg font-bold hover:bg-gray-50 transition-all text-sm">
-                                Not now
-                            </button>
-                        </div>
+                        <LogoIcon size="64" /><h2 className="text-4xl font-black uppercase italic mb-3 mt-4">Unlock Script</h2>
+                        <form action="https://www.paypal.com/ncp/payment/QVTMH7RF7NUBE" method="post" target="_blank">
+                            <input type="submit" value="Unlock — $3.00" className="bg-[#FFD140] font-bold py-4 px-12 rounded-lg cursor-pointer border-2 border-black" />
+                        </form>
                     </div>
                 </div>
             )}
-
-            {/* Header */}
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shrink-0 z-50">
-                <div className="flex items-center gap-4">
-                    <LogoIcon size="40" />
-                    <h1 className="text-3xl font-black uppercase italic tracking-tight">
-                        Scriptread <span className="text-blue-600">Pro</span>
-                    </h1>
-                </div>
-                <div className="flex gap-4 items-center">
-                    <button onClick={masterAndExport} disabled={!isUnlocked || !canPlay}
-                        className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all
-                            ${isUnlocked && canPlay ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-40 cursor-not-allowed'}`}>
-                        {isExporting ? `Exporting ${exportProgress}%` : 'Master WAV'}
-                    </button>
-                    <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg select-none">
-                        Load Script
-                        <input type="file" className="hidden" accept=".pdf" onChange={handlePdfLoad} />
-                    </label>
-                </div>
+                <div className="flex items-center gap-4"><LogoIcon size="40" /><h1 className="text-3xl font-black uppercase italic tracking-tight italic">Scriptread <span className="text-blue-600">Pro</span></h1></div>
+                <label className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer shadow-lg select-none">
+                    Load Script <input type="file" className="hidden" accept=".pdf" onChange={handlePdfLoad} />
+                </label>
             </header>
-
-            {/* Body */}
             <div className="flex-1 flex overflow-hidden">
-
-                {/* Sidebar */}
                 <aside className="w-80 bg-white border-r-2 border-gray-100 flex flex-col shrink-0 overflow-y-auto p-5">
                     <div className="font-black uppercase text-[10px] text-gray-400 mb-3 tracking-widest">Narrator</div>
-                    <div className="p-4 bg-gray-50 rounded-xl border mb-5">
-                        <p className="text-[10px] font-black uppercase text-gray-500 mb-2">Narrator</p>
-                        <div className="flex gap-2 items-center">
-                            <select className="flex-1 bg-white border p-2 font-bold text-xs rounded-lg outline-none"
-                                value={voiceMap.Narrator}
-                                onChange={e => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
-                                <optgroup label="Narrators">{INWORLD_VOICES.narrators.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                                <optgroup label="Female">{INWORLD_VOICES.female.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                                <optgroup label="Male">{INWORLD_VOICES.male.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
-                            </select>
-                            <button onClick={() => auditionVoice(voiceMap.Narrator, 'Narrator')}
-                                className="px-3 py-2 border border-gray-300 rounded-lg text-[10px] font-black uppercase hover:bg-gray-100 transition-all whitespace-nowrap">
-                                {previewingChar === 'Narrator' ? '▶︎…' : '▶︎'}
-                            </button>
-                        </div>
-                    </div>
-
-                    {characters.length > 0 && (
-                        <div className="font-black uppercase text-[10px] text-gray-400 mb-3 tracking-widest">
-                            Production Cast ({characters.length})
-                        </div>
-                    )}
+                    <select className="w-full bg-white border p-2 font-bold text-xs rounded-lg mb-5" value={voiceMap.Narrator} onChange={e => setVoiceMap({...voiceMap, Narrator: e.target.value})}>
+                        {INWORLD_VOICES.narrators.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                    </select>
                     {characters.map(char => (
                         <div key={char} className="p-4 bg-gray-50 rounded-xl border mb-3">
                             <p className="text-[10px] font-black uppercase text-gray-500 mb-2">{char}</p>
-                            <div className="flex gap-2 items-center">
-                                <select className="flex-1 bg-white border p-2 font-bold text-xs rounded-lg outline-none"
-                                    value={voiceMap[char] || 'Abby'}
-                                    onChange={e => setVoiceMap({...voiceMap, [char]: e.target.value})}>
+                            <div className="flex gap-2">
+                                <select className="flex-1 bg-white border p-2 font-bold text-xs rounded-lg" value={voiceMap[char] || 'Abby'} onChange={e => setVoiceMap({...voiceMap, [char]: e.target.value})}>
                                     <optgroup label="Female">{INWORLD_VOICES.female.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
                                     <optgroup label="Male">{INWORLD_VOICES.male.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</optgroup>
                                 </select>
-                                <button onClick={() => auditionVoice(voiceMap[char] || 'Abby', char)}
-                                    disabled={previewingChar === char}
-                                    className="px-3 py-2 border border-gray-300 rounded-lg text-[10px] font-black uppercase hover:bg-gray-100 transition-all whitespace-nowrap disabled:opacity-50">
-                                    {previewingChar === char ? '▶︎…' : '▶︎'}
-                                </button>
+                                <button onClick={() => auditionVoice(voiceMap[char] || 'Abby', char)} className="px-3 py-2 border rounded-lg text-[10px] font-black">▶︎</button>
                             </div>
                         </div>
                     ))}
-                    {parseStatus === 'parsing' && <p className="text-xs text-gray-400 font-bold uppercase tracking-widest text-center mt-6 animate-pulse">Reading PDF…</p>}
-                    {parseStatus === 'casting' && <p className="text-xs text-blue-500 font-bold uppercase tracking-widest text-center mt-6 animate-pulse">AI casting in progress…</p>}
                 </aside>
-
-                {/* Script view */}
                 <main className="flex-1 overflow-y-auto bg-[#e9ecef] p-12 scrollbar-thin">
-                    <div className="max-w-2xl mx-auto min-h-full flex flex-col">
-                        {parseStatus === 'idle' && (
-                            <div className="flex flex-col items-center justify-center flex-1 gap-6 text-center py-24">
-                                <LogoIcon size="64" color="#9ca3af" />
-                                <h2 className="text-2xl font-black uppercase text-gray-400">Load a script to begin</h2>
-                                <p className="text-gray-400 text-sm max-w-xs">Upload a PDF screenplay — Scriptread Pro casts every character with a unique voice and reads it aloud.</p>
-                            </div>
-                        )}
-                        {(parseStatus === 'parsing' || parseStatus === 'casting') && (
-                            <Spinner label={parseStatus === 'parsing' ? 'Reading script…' : 'AI casting characters…'} />
-                        )}
-                        {parseStatus === 'ready' && segments.map((seg, i) => (
-                            <div key={i} ref={el => segmentRefs.current[i] = el}
-                                className={`p-10 bg-white mb-6 rounded-xl border-l-4 transition-all duration-300
-                                    ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl scale-[1.01]' : 'border-transparent opacity-50'}`}>
-                                {seg.type === 'dialogue' && (
-                                    <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>
-                                )}
+                    <div className="max-w-2xl mx-auto min-h-full">
+                        {parseStatus === 'parsing' || parseStatus === 'casting' ? <Spinner label={parseStatus === 'parsing' ? 'Reading script…' : 'AI casting…'} /> : 
+                        segments.map((seg, i) => (
+                            <div key={i} ref={el => segmentRefs.current[i] = el} className={`p-10 bg-white mb-6 rounded-xl border-l-4 transition-all ${currentIdx === i ? 'border-blue-600 opacity-100 shadow-xl' : 'border-transparent opacity-50'}`}>
+                                {seg.type === 'dialogue' && <p className="text-[11px] font-black uppercase mb-4 text-blue-600 tracking-widest">{seg.character}</p>}
                                 <p className="text-xl font-serif text-gray-800 leading-relaxed">{seg.text}</p>
                             </div>
                         ))}
                     </div>
                 </main>
             </div>
-
-            {/* Footer — media controls */}
-            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-8 shrink-0 z-50 px-8">
-                {parseStatus === 'idle' && (
-                    <p className="text-xs font-black uppercase tracking-widest text-gray-300">No script loaded</p>
-                )}
-                {(parseStatus === 'parsing' || parseStatus === 'casting') && (
-                    <p className="text-xs font-black uppercase tracking-widest text-gray-400 animate-pulse">
-                        {parseStatus === 'parsing' ? 'Reading PDF…' : 'AI casting in progress…'}
-                    </p>
-                )}
-                {canPlay && (
-                    <>
-                        {/* Restart */}
-                        <button onClick={handleRestart} title="Restart from beginning"
-                            className="text-gray-400 hover:text-black transition-all">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="1 4 1 10 7 10"/>
-                                <path d="M3.51 15a9 9 0 1 0 .49-3.51"/>
-                            </svg>
-                        </button>
-                        {/* Skip back */}
-                        <button onClick={handleSkipBack} title="Previous segment"
-                            className="text-gray-400 hover:text-black transition-all">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
-                            </svg>
-                        </button>
-                        {/* Play / Pause */}
-                        <button onClick={handlePlayPause}
-                            className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"
-                            title={isPlaying ? 'Pause' : 'Play'}>
-                            {isPlaying ? (
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
-                                    <rect x="6" y="4" width="4" height="16" rx="1"/>
-                                    <rect x="14" y="4" width="4" height="16" rx="1"/>
-                                </svg>
-                            ) : (
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
-                                    <polygon points="5,3 19,12 5,21"/>
-                                </svg>
-                            )}
-                        </button>
-                        {/* Skip forward */}
-                        <button onClick={handleSkipForward} title="Next segment"
-                            className="text-gray-400 hover:text-black transition-all">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M6 18l8.5-6L6 6v12zm9-12v12h2V6h-2z"/>
-                            </svg>
-                        </button>
-                        {/* Stats */}
-                        <div className="text-xs text-gray-400 font-bold uppercase tracking-widest text-center">
-                            <div>{segments.length} segments</div>
-                            <div>{characters.length} characters</div>
-                        </div>
-                    </>
-                )}
+            <footer className="h-28 border-t-2 border-black bg-white flex justify-center items-center gap-16 shrink-0 z-50">
+                <button onClick={handlePlayPause} className="bg-black text-white w-20 h-20 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl font-black">{isPlaying ? "PAUSE" : "PLAY"}</button>
             </footer>
         </div>
     );
