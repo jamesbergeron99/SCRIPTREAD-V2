@@ -169,9 +169,14 @@ const Scriptread = () => {
         const charOccurrenceIndices = new Map();
         let actionBuffer = "";
         let currentSpeaker = null;
+        
+        // STEP 1 — BROAD DETECTION
+        const potentialCharacters = new Set();
 
         const flush = () => { if (actionBuffer.trim()) { finalBlocks.push({ type: 'narrator', text: actionBuffer.trim() }); actionBuffer = ""; } };
-        const invalid = /^(INT|EXT|DAY|NIGHT|CUT|FADE|ACT|SCENE|ROOM|THE END|CONTINUED|BACK TO|KITCHEN|HALLWAY|BEDROOM)/i;
+        
+        // STEP 5 — REMOVE OVER-STRICT FILTERING
+        const invalid = /^(INT|EXT|DAY|NIGHT|SCENE|CUT|FADE|ACT|ROOM|THE END|CONTINUED|BACK TO|KITCHEN|HALLWAY|BEDROOM)/i;
 
         for (let i = 0; i < lines.length; i++) {
             let t = lines[i].text.trim();
@@ -179,51 +184,59 @@ const Scriptread = () => {
             
             const x = lines[i].x || 0;
 
+            // SAFE INLINE DETECTION
             const inlineMatch = t.match(/^([A-Z]{2,})\s+([A-Z]?[a-z].*)$/);
             if (inlineMatch && t.length < 150 && !t.startsWith("INT") && !t.startsWith("EXT")) {
                 const possibleName = inlineMatch[1];
                 if (!invalid.test(possibleName)) {
+                    // STEP 1 & 4 — BROAD DETECTION AND CLEAN NAME
+                    potentialCharacters.add(possibleName);
+                    
                     flush();
                     currentSpeaker = possibleName;
 
-                    // STEP 2 & 3: VALIDATE DIALOGUE AND ADD CHARACTER ONLY THEN
-                    const dialogueText = inlineMatch[2];
-                    if (dialogueText && dialogueText.trim().length > 2) {
-                        if (!charOccurrenceIndices.has(possibleName)) {
-                            charOccurrenceIndices.set(possibleName, []);
-                        }
-                        charOccurrenceIndices.get(possibleName).push(i);
+                    if (!charOccurrenceIndices.has(possibleName)) {
+                        charOccurrenceIndices.set(possibleName, []);
                     }
+                    charOccurrenceIndices.get(possibleName).push(i);
 
                     finalBlocks.push({
                         type: 'dialogue',
                         character: possibleName,
-                        text: dialogueText
+                        text: inlineMatch[2]
                     });
 
                     continue;
                 }
             }
 
+            // Normal character detection logic
             const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             let isChar = false;
             let cleanName = "";
 
             if (isUpper && x > 210 && x < 320 && t.length < 25 && !invalid.test(t)) {
                 cleanName = t.replace(/\([^)]*\)/g, "").replace(/[^a-zA-Z0-9\s]/g, "").trim();
-                for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
-                    const nx = lines[j].x || 0;
-                    if (nx > 180 && nx < 380 && lines[j].text !== lines[j].text.toUpperCase()) {
-                        isChar = true; break;
+                if (cleanName) {
+                    // STEP 1 — BROAD DETECTION
+                    potentialCharacters.add(cleanName);
+
+                    for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
+                        const nx = lines[j].x || 0;
+                        if (nx > 180 && nx < 380 && lines[j].text !== lines[j].text.toUpperCase()) {
+                            isChar = true; break;
+                        }
+                        if (lines[j].text === lines[j].text.toUpperCase() && nx > 200) break;
                     }
-                    if (lines[j].text === lines[j].text.toUpperCase() && nx > 200) break;
                 }
             }
 
+            // STEP 2 — KEEP CURRENT DIALOGUE LOGIC
             if (isChar) {
                 flush();
                 currentSpeaker = cleanName;
-                // REMOVED STEP 1: EARLY CHARACTER ADDING (charOccurrenceIndices push removed)
+                if (!charOccurrenceIndices.has(cleanName)) charOccurrenceIndices.set(cleanName, []);
+                charOccurrenceIndices.get(cleanName).push(i);
                 finalBlocks.push({ type: 'dialogue', character: cleanName, text: "" });
             } 
             else if (currentSpeaker) {
@@ -234,17 +247,8 @@ const Scriptread = () => {
 
                 if (isParenthetical || (!isUpperLine && inRange && isShort)) {
                     finalBlocks[finalBlocks.length - 1].text += (finalBlocks[finalBlocks.length - 1].text ? " " : "") + t;
-                    
-                    // STEP 2 & 3: ADD CHARACTERS ONLY AFTER VALID DIALOGUE EXISTS
-                    const currentBlock = finalBlocks[finalBlocks.length - 1];
-                    if (currentBlock.text && currentBlock.text.trim().length > 2) {
-                        if (!charOccurrenceIndices.has(currentSpeaker)) {
-                            charOccurrenceIndices.set(currentSpeaker, []);
-                        }
-                        // Avoid pushing the same line index multiple times if dialogue spans lines
-                        if (!charOccurrenceIndices.get(currentSpeaker).includes(i)) {
-                            charOccurrenceIndices.get(currentSpeaker).push(i);
-                        }
+                    if (charOccurrenceIndices.has(currentSpeaker)) {
+                        charOccurrenceIndices.get(currentSpeaker).push(i);
                     }
                 } else {
                     currentSpeaker = null;
@@ -257,8 +261,8 @@ const Scriptread = () => {
         }
         flush();
 
-        // STEP 4 — FILTER FINAL CHARACTER LIST
-        const detectedCharacters = Array.from(charOccurrenceIndices.keys()).filter(name => {
+        // STEP 3 — VALIDATE AFTER PARSING
+        const detectedCharacters = Array.from(potentialCharacters).filter(name => {
             return finalBlocks.some(b =>
                 b.type === 'dialogue' &&
                 b.character === name &&
