@@ -202,15 +202,31 @@ const Scriptread = () => {
                 return; // Don't push character name as a segment
             }
 
-            // Dialogue or Action?
+            // Dialogue block assembly
             if (currentDialogueChar && x > 120 && x < 450 && t.length < 150) {
-                // If it's a line following a character name, it's dialogue. 
-                // Push it as its own block immediately (Line-by-line)
-                finalBlocks.push({ type: 'dialogue', character: currentDialogueChar, text: t });
-            } else {
-                // Otherwise, it's a slug line or action. Push as Narrator.
+                const lastBlock = finalBlocks[finalBlocks.length - 1];
+                
+                // If the last block was dialogue by the SAME character, append to it
+                if (lastBlock && lastBlock.type === 'dialogue' && lastBlock.character === currentDialogueChar) {
+                    lastBlock.text += (lastBlock.text.endsWith('-') ? '' : ' ') + t;
+                } else {
+                    // Start a brand new dialogue segment
+                    finalBlocks.push({ type: 'dialogue', character: currentDialogueChar, text: t });
+                }
+            } 
+            // Action description / Narrator block assembly
+            else {
                 currentDialogueChar = null; // Break dialogue chain
-                finalBlocks.push({ type: 'narrator', text: t });
+                const lastBlock = finalBlocks[finalBlocks.length - 1];
+                const isSlug = invalid.test(t);
+
+                // If the last block was a narrator line, and this isn't a new scene slug, stitch it!
+                if (lastBlock && lastBlock.type === 'narrator' && !isSlug && !lastBlock.isSlugline) {
+                    lastBlock.text += (lastBlock.text.endsWith('-') ? '' : ' ') + t;
+                } else {
+                    // Create a new narrator block, flagging if it's a structural slugline
+                    finalBlocks.push({ type: 'narrator', text: t, isSlugline: isSlug });
+                }
             }
         });
 
