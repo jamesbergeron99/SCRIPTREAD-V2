@@ -35,7 +35,7 @@ const Scriptread = () => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentIdx, setCurrentIdx] = useState(-1);
     const [totalSeconds, setTotalSeconds] = useState(0);
-    const [isUnlocked, setIsUnlocked] = useState(false);
+    const [isUnlocked, setIsUnlocked] = useState(true); // Always unlocked
     const [showPaywall, setShowPaywall] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
@@ -91,9 +91,7 @@ const Scriptread = () => {
         if (segments.length > 0) preloadFuture(currentIdx + 1);
     }, [currentIdx, segments]);
 
-    useEffect(() => {
-        if (!isUnlocked && totalSeconds >= 90) { stopAudio(); setShowPaywall(true); }
-    }, [totalSeconds, isUnlocked]);
+    // Timeout useEffect block completely removed
 
     const stopAudio = () => {
         isPlayingRef.current = false; setIsPlaying(false);
@@ -123,7 +121,6 @@ const Scriptread = () => {
     };
 
     const playSegment = async (index) => {
-        if (!isUnlocked && totalSeconds >= 90) { stopAudio(); setShowPaywall(true); return; }
         if (!isPlayingRef.current || index >= segments.length) return;
         setCurrentIdx(index);
         const seg = segments[index];
@@ -199,32 +196,27 @@ const Scriptread = () => {
                 if (!charEvidence.has(currentDialogueChar)) {
                     charEvidence.set(currentDialogueChar, lines.slice(Math.max(0, i-5), i+15).map(l => l.text).join(" "));
                 }
-                return; // Don't push character name as a segment
+                return;
             }
 
             // Dialogue block assembly
             if (currentDialogueChar && x > 120 && x < 450 && t.length < 150) {
                 const lastBlock = finalBlocks[finalBlocks.length - 1];
-                
-                // If the last block was dialogue by the SAME character, append to it
                 if (lastBlock && lastBlock.type === 'dialogue' && lastBlock.character === currentDialogueChar) {
                     lastBlock.text += (lastBlock.text.endsWith('-') ? '' : ' ') + t;
                 } else {
-                    // Start a brand new dialogue segment
                     finalBlocks.push({ type: 'dialogue', character: currentDialogueChar, text: t });
                 }
             } 
             // Action description / Narrator block assembly
             else {
-                currentDialogueChar = null; // Break dialogue chain
+                currentDialogueChar = null;
                 const lastBlock = finalBlocks[finalBlocks.length - 1];
                 const isSlug = invalid.test(t);
 
-                // If the last block was a narrator line, and this isn't a new scene slug, stitch it!
                 if (lastBlock && lastBlock.type === 'narrator' && !isSlug && !lastBlock.isSlugline) {
                     lastBlock.text += (lastBlock.text.endsWith('-') ? '' : ' ') + t;
                 } else {
-                    // Create a new narrator block, flagging if it's a structural slugline
                     finalBlocks.push({ type: 'narrator', text: t, isSlugline: isSlug });
                 }
             }
