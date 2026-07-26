@@ -10,6 +10,7 @@ const INWORLD_VOICES = {
     ],
     custom: [
         { id: "default-oglabcjnetcklcq7rghmbw__design-voice-1289100c", name: "Daneeka" },
+        { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" },
         { id: "default-oglabcjnetcklcq7rghmbw__design-voice-045a5de4", name: "Zack" },
         { id: "default-oglabcjnetcklcq7rghmbw__design-voice-30af450b", name: "Oleg" }
     ],
