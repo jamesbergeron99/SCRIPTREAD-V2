@@ -6,6 +6,7 @@ const INWORLD_VOICES = {
     narrators: [
         { id: "Serena", name: "Serena" },
         { id: "Selene", name: "Selene" },
+        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-1289100c", name: "Daneeka" },
         { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
     ],
     custom: [
@@ -169,12 +170,19 @@ const Scriptread = () => {
         setIsAnalyzing(true);
         try {
             const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            // FIX: gemini-1.5-flash was shut down by Google (returns 404).
+            // Every call was silently failing, so gender casting always fell
+            // back to the crude "name ends in a" guess.
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
             const prompt = `Identify if each character is 'male' or 'female' based on names and dialogue context. Return ONLY JSON: {"NAME": "male"}. Evidence: ${charData.map(c => `- ${c.name}: "${c.evidence}"`).join("\n")}`;
             const result = await model.generateContent(prompt);
             const text = result.response.text().replace(/```json|```/g, "").trim();
             return JSON.parse(text);
-        } catch (e) { return null; }
+        } catch (e) {
+            // FIX: failures are now visible in the browser console instead of silent
+            console.error("Gender analysis failed:", e);
+            return null;
+        }
         finally { setIsAnalyzing(false); }
     };
 
@@ -182,7 +190,13 @@ const Scriptread = () => {
         const finalBlocks = [];
         const charEvidence = new Map();
         let currentDialogueChar = null;
+        // This broad list is ONLY for rejecting false character names.
         const invalid = /^(INT|EXT|DAY|NIGHT|FADE|CUT|TITLE|ACT|SCENE|END|BEGIN|COLD|OPEN|FLASHBACK|CONTINUED|BACK|OVER|WRITTEN|BY)/i;
+        // FIX: a much narrower pattern decides what is an actual slugline.
+        // Previously, action lines starting with words like BACK, OVER, DAY,
+        // or OPEN were flagged as sluglines, which broke paragraphs apart
+        // and caused unnatural pauses between TTS chunks.
+        const slug = /^(INT\.|EXT\.|INT\/EXT|I\/E|EST\.|FADE (IN|OUT|TO)|CUT TO|SMASH CUT|TITLE:|COLD OPEN|END OF|ACT\b)/i;
 
         lines.forEach((line, i) => {
             let t = line.text.trim();
@@ -213,7 +227,7 @@ const Scriptread = () => {
             else {
                 currentDialogueChar = null;
                 const lastBlock = finalBlocks[finalBlocks.length - 1];
-                const isSlug = invalid.test(t);
+                const isSlug = slug.test(t);
 
                 if (lastBlock && lastBlock.type === 'narrator' && !isSlug && !lastBlock.isSlugline) {
                     lastBlock.text += (lastBlock.text.endsWith('-') ? '' : ' ') + t;
@@ -226,9 +240,19 @@ const Scriptread = () => {
         const evidenceArr = Array.from(charEvidence.entries()).map(([name, evidence]) => ({ name, evidence }));
         const aiResults = await analyzeGenders(evidenceArr);
 
+        // FIX: normalize the AI's keys before lookup. The script's character
+        // names are ALL CAPS ("ROBERT") but Gemini may return "Robert",
+        // which made the exact-match lookup fail even when the AI answered.
+        const genderLookup = {};
+        if (aiResults) {
+            Object.entries(aiResults).forEach(([k, v]) => {
+                genderLookup[k.toUpperCase().trim()] = String(v).toLowerCase();
+            });
+        }
+
         let newMap = { Narrator: "Serena" };
         charEvidence.forEach((_, name) => {
-            const gender = (aiResults && aiResults[name]) ? aiResults[name].toLowerCase() : (name.toLowerCase().endsWith('a') ? 'female' : 'male');
+            const gender = genderLookup[name.toUpperCase()] || (name.toLowerCase().endsWith('a') ? 'female' : 'male');
             const pool = INWORLD_VOICES[gender === 'male' ? 'male' : 'female'];
             const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
             newMap[name] = pool[hash % pool.length].id;
@@ -287,9 +311,35 @@ const Scriptread = () => {
                             reader.onload = async () => {
                                 const pdf = await window.pdfjsLib.getDocument({ data: reader.result }).promise;
                                 let lines = [];
+                                // FIX: pdf.js returns text RUNS, not lines. A single
+                                // visual line often arrives as 2-3 fragments, which
+                                // caused mid-sentence block breaks (unnatural pauses)
+                                // and let stray uppercase fragments get misread as
+                                // character names. We now group fragments by their
+                                // y-coordinate into real lines before parsing.
                                 for (let i = 1; i <= Math.min(pdf.numPages, 120); i++) {
-                                    const page = await pdf.getPage(i); const content = await page.getTextContent();
-                                    content.items.forEach(item => lines.push({ text: item.str, x: item.transform[4] }));
+                                    const page = await pdf.getPage(i);
+                                    const content = await page.getTextContent();
+                                    const rows = new Map();
+                                    content.items.forEach(item => {
+                                        if (!item.str.trim()) return;
+                                        const y = Math.round(item.transform[5]);
+                                        let key = null;
+                                        for (const k of rows.keys()) {
+                                            if (Math.abs(k - y) <= 2) { key = k; break; }
+                                        }
+                                        if (key === null) { key = y; rows.set(key, []); }
+                                        rows.get(key).push(item);
+                                    });
+                                    Array.from(rows.entries())
+                                        .sort((a, b) => b[0] - a[0]) // PDF y grows upward: descending = top-to-bottom
+                                        .forEach(([, items]) => {
+                                            items.sort((a, b) => a.transform[4] - b.transform[4]);
+                                            lines.push({
+                                                text: items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim(),
+                                                x: items[0].transform[4]
+                                            });
+                                        });
                                 }
                                 parseScript(lines);
                             }; reader.readAsArrayBuffer(file);
