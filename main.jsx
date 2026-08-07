@@ -7,7 +7,10 @@ const INWORLD_VOICES = {
         { id: "Serena", name: "Serena" },
         { id: "Selene", name: "Selene" },
         { id: "default-oglabcjnetcklcq7rghmbw__design-voice-1289100c", name: "Daneeka" },
-        { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" }
+        { id: "default-oglabcjnetcklcq7rghmbw__frank2", name: "Frank" },
+        { id: "default-oglabcjnetcklcq7rghmbw__design-voice-4bc6bc2e", name: "Gus" },
+        { id: "default-oglabcjnetcklcq7rghmbw__james_b", name: "Robert" }
+        
     ],
     custom: [
         { id: "default-oglabcjnetcklcq7rghmbw__design-voice-1289100c", name: "Daneeka" },
