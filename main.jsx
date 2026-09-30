@@ -77,8 +77,16 @@ const speakable = (text) => {
          .replace(/^[,\s]+/, "")
          .replace(/,\s*$/, "");
 
-    // 2. Slashes would confuse the IPA markers, so "and/or" becomes "and or"
-    t = t.replace(/\//g, " ");
+    // 2. Safety net: some PDFs store brackets and symbols as unusual
+    //    characters the regex above can't see, and the voice reads them as
+    //    "slash". Any character that isn't a letter, number, or ordinary
+    //    punctuation is now swapped for a comma pause.
+    t = t.replace(/[^\p{L}\p{N}\s.,!?;:'’"“”\-–—&]/gu, ", ")
+         .replace(/\s+,/g, ",")
+         .replace(/,(\s*,)+/g, ",")
+         .replace(/,\s*([.!?;:])/g, "$1")
+         .replace(/^[,\s]+/, "")
+         .replace(/,\s*$/, "");
 
     // 3. ALL-CAPS words become normal words: "BOUTIQUE" -> "Boutique"
     t = t.replace(/\b[A-Z][A-Z'’]+\b/g, w => KEEP_CAPS.has(w) ? w : w[0] + w.slice(1).toLowerCase());
@@ -227,7 +235,7 @@ const Scriptread = () => {
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
         try {
-            const buffer = await fetchAudio("Welcome to Script reed Pro.", "Serena");
+            const buffer = await fetchAudio("Welcome to Script reed Pro, version two point six.", "Serena");
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
