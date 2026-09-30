@@ -69,6 +69,14 @@ const speakable = (text) => {
          .replace(/\bEST\.(?=\s)/g, "Establishing.")
          .replace(/\((CONT'D|CONT’D|CONTINUED|MORE|V\.O\.|O\.S\.|O\.C\.)\)/gi, "");
 
+    // 1b. Brackets: "DANICA D BLACK (26)" was being read with a stray
+    //     "slash" sound. Swap brackets for commas so it reads as a pause:
+    //     "Danica D Black, 26, sits down."
+    t = t.replace(/\s*[(\[]\s*([^)\]]*?)\s*[)\]]/g, ", $1,")
+         .replace(/,\s*([,.!?;:])/g, "$1")
+         .replace(/^[,\s]+/, "")
+         .replace(/,\s*$/, "");
+
     // 2. Slashes would confuse the IPA markers, so "and/or" becomes "and or"
     t = t.replace(/\//g, " ");
 
