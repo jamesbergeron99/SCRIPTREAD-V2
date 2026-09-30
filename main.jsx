@@ -37,6 +37,51 @@ const INWORLD_VOICES = {
     ]
 };
 
+// ---------------------------------------------------------------------------
+// PRONUNCIATION FIXES
+// The voices stumble on ALL-CAPS words (slug lines, character intros), so
+// before any text is sent to Inworld it goes through speakable() below.
+// This only changes what the voice HEARS, never what's shown on screen.
+// ---------------------------------------------------------------------------
+
+// All-caps words that are real acronyms and should stay spelled out.
+const KEEP_CAPS = new Set(["TV", "FBI", "CIA", "CEO", "DJ", "OK", "USA", "UK", "NYC", "LA", "ER", "ICU", "DNA", "ATM", "VIP", "GPS", "HQ", "CD", "DVD", "OMG"]);
+
+// Words the voice still gets wrong. Pronunciation is written in IPA between
+// slashes, which Inworld reads as "say it exactly like this."
+// To add a word: copy a line, change the word, and ask Claude for the IPA.
+const PRONOUNCE = {
+    boutique: "/buːˈtiːk/",
+    pilot: "/ˈpaɪlət/",
+    chosen: "/ˈtʃoʊzən/",
+};
+
+const speakable = (text) => {
+    let t = text;
+
+    // 1. Screenplay shorthand
+    t = t.replace(/\bINT\.?\s*\/\s*EXT\b\.?/gi, "Interior, exterior.")
+         .replace(/\bI\/E\b\.?/g, "Interior, exterior.")
+         .replace(/\bEXT\b\.?/gi, "Exterior.")
+         .replace(/\bINT\b\.?/gi, "Interior.")
+         .replace(/\bEST\.(?=\s)/g, "Establishing.")
+         .replace(/\((CONT'D|CONT’D|CONTINUED|MORE|V\.O\.|O\.S\.|O\.C\.)\)/gi, "");
+
+    // 2. Slashes would confuse the IPA markers, so "and/or" becomes "and or"
+    t = t.replace(/\//g, " ");
+
+    // 3. ALL-CAPS words become normal words: "BOUTIQUE" -> "Boutique"
+    t = t.replace(/\b[A-Z][A-Z'’]+\b/g, w => KEEP_CAPS.has(w) ? w : w[0] + w.slice(1).toLowerCase());
+
+    // 4. James's existing spelling fixes
+    t = t.replace(/\bsugar\b/gi, "shuger").replace(/\bScriptread\b/gi, "Script-reed");
+
+    // 5. Pronunciation dictionary
+    t = t.replace(/\b[A-Za-z]+\b/g, w => PRONOUNCE[w.toLowerCase()] ?? w);
+
+    return t.replace(/\s+/g, " ").trim();
+};
+
 const LogoIcon = ({ size = "40", color = "#2563eb" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -115,7 +160,8 @@ const Scriptread = () => {
     };
 
     const fetchAudio = async (text, voiceId) => {
-        const cleanedText = text.replace(/\bEXT\b\.?/gi, "Exterior").replace(/\bINT\b\.?/gi, "Interior").replace(/\bDEE\b/g, "Dee").replace(/\bsugar\b/gi, "shuger").replace(/\bScriptread\b/gi, "Script-reed");
+        // FIX: all text now goes through speakable() (see top of file)
+        const cleanedText = speakable(text);
         const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
             method: "POST",
             headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
