@@ -235,7 +235,7 @@ const Scriptread = () => {
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
         try {
-            const buffer = await fetchAudio("Welcome to Script reed Pro, version two point six.", "Serena");
+            const buffer = await fetchAudio("Welcome to Script reed Pro, version two point seven.", "Serena");
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
@@ -278,6 +278,7 @@ const Scriptread = () => {
         // Previously, action lines starting with words like BACK, OVER, DAY,
         // or OPEN were flagged as sluglines, which broke paragraphs apart
         // and caused unnatural pauses between TTS chunks.
+        const actBreak = /^(END OF\s+)?(ACT\s+(ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|\d+|[IVX]+)|TEASER|COLD OPEN|TAG|THE END|FADE (IN|OUT|TO)|CUT TO|SMASH CUT( TO)?|DISSOLVE TO|MATCH CUT( TO)?)[\s.:!]*$/i;
         const slug = /^(INT\.|EXT\.|INT\/EXT|I\/E|EST\.|FADE (IN|OUT|TO)|CUT TO|SMASH CUT|TITLE:|COLD OPEN|END OF|ACT\b)/i;
 
         lines.forEach((line, i) => {
@@ -286,6 +287,16 @@ const Scriptread = () => {
 
             const isUpper = t === t.toUpperCase() && /[A-Z]/.test(t);
             const x = line.x || 0;
+
+            // FIX: act breaks ("ACT ONE", "END OF ACT TWO") are centered, so
+            // they landed in the dialogue zone and got read by whichever
+            // character spoke last. The PDF reader can't see underlining, so
+            // we recognize them by their wording and hand them to the Narrator.
+            if (actBreak.test(t)) {
+                currentDialogueChar = null;
+                finalBlocks.push({ type: 'narrator', text: t, isSlugline: true });
+                return;
+            }
 
             // Character detection
             if (isUpper && x > 180 && x < 330 && t.length < 25 && !invalid.test(t)) {
