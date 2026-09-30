@@ -56,6 +56,7 @@ const PRONOUNCE = {
     chosen: "/ˈtʃoʊzən/",
     sugar: "/ˈʃʊɡər/",
     montage: "/mɑnˈtɑːʒ/",
+    bergeron: "/ˈbɛrʒərɑn/",
 };
 
 const speakable = (text) => {
@@ -235,7 +236,7 @@ const Scriptread = () => {
         hasGreetedRef.current = true;
         if (audioContext.current.state === 'suspended') await audioContext.current.resume();
         try {
-            const buffer = await fetchAudio("Welcome to Script reed Pro, version two point seven.", "Serena");
+            const buffer = await fetchAudio("Welcome to Script reed Pro, version two point eight.", "Serena");
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.current.destination);
