@@ -54,6 +54,8 @@ const PRONOUNCE = {
     boutique: "/buːˈtiːk/",
     pilot: "/ˈpaɪlət/",
     chosen: "/ˈtʃoʊzən/",
+    sugar: "/ˈʃʊɡər/",
+    montage: "/mɑnˈtɑːʒ/",
 };
 
 const speakable = (text) => {
@@ -74,7 +76,7 @@ const speakable = (text) => {
     t = t.replace(/\b[A-Z][A-Z'’]+\b/g, w => KEEP_CAPS.has(w) ? w : w[0] + w.slice(1).toLowerCase());
 
     // 4. James's existing spelling fixes
-    t = t.replace(/\bsugar\b/gi, "shuger").replace(/\bScriptread\b/gi, "Script-reed");
+    t = t.replace(/\bScriptread\b/gi, "Script-reed");
 
     // 5. Pronunciation dictionary
     t = t.replace(/\b[A-Za-z]+\b/g, w => PRONOUNCE[w.toLowerCase()] ?? w);
@@ -233,10 +235,14 @@ const Scriptread = () => {
             // FIX: gemini-1.5-flash was shut down by Google (returns 404).
             // Every call was silently failing, so gender casting always fell
             // back to the crude "name ends in a" guess.
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            // FIX 2: gemini-2.5-flash is now being retired too, same symptom.
+            // Moved to gemini-3.5-flash, Google's current stable Flash model.
+            const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
             const prompt = `Identify if each character is 'male' or 'female' based on names and dialogue context. Return ONLY JSON: {"NAME": "male"}. Evidence: ${charData.map(c => `- ${c.name}: "${c.evidence}"`).join("\n")}`;
             const result = await model.generateContent(prompt);
-            const text = result.response.text().replace(/```json|```/g, "").trim();
+            const raw = result.response.text();
+            // Pull out just the {...} part in case the model adds extra words
+            const text = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
             return JSON.parse(text);
         } catch (e) {
             // FIX: failures are now visible in the browser console instead of silent
