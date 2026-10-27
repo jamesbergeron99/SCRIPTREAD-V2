@@ -185,7 +185,7 @@ const Scriptread = () => {
         // FIX: all text now goes through speakable() (see top of file)
         const cleanedText = speakable(text);
         // FIX: when Inworld says "too many requests" (429), wait and try
-        // again instead of failing. Waits get longer each time: 2s, 4s, 8s...
+        // again instead of failing. Waits get longer each time: 1s, 2s, 4s...
         for (let attempt = 0; attempt < 6; attempt++) {
             const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
                 method: "POST",
@@ -194,7 +194,7 @@ const Scriptread = () => {
             });
             if (response.status === 429) {
                 const retryAfter = Number(response.headers.get("Retry-After"));
-                const wait = retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 2000 * 2 ** attempt);
+                const wait = retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 1000 * 2 ** attempt);
                 console.warn(`Inworld busy (429). Waiting ${wait / 1000}s and retrying...`);
                 await sleep(wait);
                 continue;
@@ -380,21 +380,26 @@ const Scriptread = () => {
         // hitting Inworld at the same time.
         stopAudio();
         setIsExporting(true); setExportProgress(0);
-        const buffers = [];
+        const buffers = new Array(segments.length);
         try {
-            for (let i = 0; i < segments.length; i++) {
-                setExportProgress(Math.round((i / segments.length) * 100));
-                const seg = segments[i]; 
-                const v = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-                // FIX: reuse lines already loaded during playback, and pause
-                // briefly between requests so Inworld doesn't get flooded.
-                if (decodedCache.current[i]) {
-                    buffers.push(decodedCache.current[i]);
-                } else {
-                    buffers.push(await fetchAudio(seg.text, v));
-                    await sleep(300);
+            // SPEED: fetch several lines at once instead of one by one.
+            // If Inworld says "slow down" (429), fetchAudio waits and retries.
+            // Raise WORKERS to go faster, lower it if you see lots of 429s.
+            const WORKERS = 4;
+            let next = 0, done = 0;
+            const worker = async () => {
+                while (next < segments.length) {
+                    const i = next++;
+                    const seg = segments[i];
+                    const v = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
+                    // Reuse lines already loaded during playback
+                    buffers[i] = decodedCache.current[i] || await fetchAudio(seg.text, v);
+                    decodedCache.current[i] = buffers[i];
+                    done++;
+                    setExportProgress(Math.round((done / segments.length) * 100));
                 }
-            }
+            };
+            await Promise.all(Array.from({ length: WORKERS }, worker));
             const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
             const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
             const channelData = masterBuffer.getChannelData(0);
