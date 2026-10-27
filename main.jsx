@@ -101,6 +101,9 @@ const speakable = (text) => {
     return t.replace(/\s+/g, " ").trim();
 };
 
+// Small helper: pause for a number of milliseconds.
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
 const LogoIcon = ({ size = "40", color = "#2563eb" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 6C10.5 4.5 7.5 4.5 6 4.5C4.5 4.5 3 5.5 3 7.5V19.5C3 19.5 4.5 18.5 6 18.5C7.5 18.5 10.5 18.5 12 20M12 6C13.5 4.5 16.5 4.5 18 4.5C19.5 4.5 21 5.5 21 7.5V19.5C21 19.5 19.5 18.5 18 18.5C16.5 18.5 13.5 18.5 12 20M12 6V20" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -181,13 +184,26 @@ const Scriptread = () => {
     const fetchAudio = async (text, voiceId) => {
         // FIX: all text now goes through speakable() (see top of file)
         const cleanedText = speakable(text);
-        const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
-            method: "POST",
-            headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
-        });
-        const data = await response.json();
-        return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
+        // FIX: when Inworld says "too many requests" (429), wait and try
+        // again instead of failing. Waits get longer each time: 2s, 4s, 8s...
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                method: "POST",
+                headers: { "Authorization": `Basic ${API_KEY}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ text: cleanedText, voiceId: voiceId || "Abby", modelId: "inworld-tts-1.5-max" })
+            });
+            if (response.status === 429) {
+                const retryAfter = Number(response.headers.get("Retry-After"));
+                const wait = retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 2000 * 2 ** attempt);
+                console.warn(`Inworld busy (429). Waiting ${wait / 1000}s and retrying...`);
+                await sleep(wait);
+                continue;
+            }
+            if (!response.ok) throw new Error(`Inworld error ${response.status}`);
+            const data = await response.json();
+            return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
+        }
+        throw new Error("Inworld kept refusing after 6 tries (429).");
     };
 
     const auditionVoice = async (voiceId, charName) => {
@@ -227,7 +243,7 @@ const Scriptread = () => {
             if (i >= segments.length || decodedCache.current[i]) continue;
             const seg = segments[i];
             const voice = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-            fetchAudio(seg.text, voice).then(buffer => { decodedCache.current[i] = buffer; });
+            fetchAudio(seg.text, voice).then(buffer => { decodedCache.current[i] = buffer; }).catch(() => {});
         }
     };
 
@@ -360,6 +376,9 @@ const Scriptread = () => {
 
     const masterAndExport = async () => {
         if (!isUnlocked) { setShowPaywall(true); return; }
+        // FIX: stop playback first, so playback and mastering aren't both
+        // hitting Inworld at the same time.
+        stopAudio();
         setIsExporting(true); setExportProgress(0);
         const buffers = [];
         try {
@@ -367,7 +386,14 @@ const Scriptread = () => {
                 setExportProgress(Math.round((i / segments.length) * 100));
                 const seg = segments[i]; 
                 const v = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
-                buffers.push(await fetchAudio(seg.text, v));
+                // FIX: reuse lines already loaded during playback, and pause
+                // briefly between requests so Inworld doesn't get flooded.
+                if (decodedCache.current[i]) {
+                    buffers.push(decodedCache.current[i]);
+                } else {
+                    buffers.push(await fetchAudio(seg.text, v));
+                    await sleep(300);
+                }
             }
             const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
             const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
@@ -383,7 +409,11 @@ const Scriptread = () => {
             const d = masterBuffer.getChannelData(0); let off = 44;
             for (let i=0; i<d.length; i++, off+=2) { const s = Math.max(-1, Math.min(1, d[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
             const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' })); link.download = "Scriptread_Master.wav"; link.click();
-        } catch (e) {} finally { setIsExporting(false); }
+        } catch (e) {
+            // FIX: failures used to vanish silently. Now you see why it stopped.
+            console.error("Master WAV failed:", e);
+            alert("Mastering stopped: " + e.message);
+        } finally { setIsExporting(false); }
     };
 
     return (
@@ -397,7 +427,7 @@ const Scriptread = () => {
             <header className="h-20 border-b-2 border-black px-10 flex justify-between items-center bg-white shrink-0 z-50">
                 <div className="flex items-center gap-4"><LogoIcon size="40" /><h1 className="text-3xl font-black uppercase italic tracking-tight italic">Scriptread <span className="text-blue-600">Pro</span></h1></div>
                 <div className="flex gap-4">
-                    <button onClick={masterAndExport} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
+                    <button onClick={masterAndExport} disabled={isExporting} className={`px-6 py-2 border-2 border-black font-black text-xs uppercase rounded-full transition-all ${isUnlocked ? 'bg-white hover:bg-black hover:text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-gray-100 opacity-50 cursor-not-allowed'}`}>
                         {isExporting ? `Mastering ${exportProgress}%` : "Master WAV"}
                     </button>
                     <label onClick={(e) => { e.stopPropagation(); handleFirstInteraction(); }} className="bg-black text-white px-8 py-2 font-black uppercase text-xs rounded-full cursor-pointer hover:bg-gray-800 transition-all shadow-lg">Load Script <input type="file" className="hidden" accept=".pdf" onChange={(e) => {
