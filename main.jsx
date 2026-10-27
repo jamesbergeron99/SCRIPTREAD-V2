@@ -199,7 +199,7 @@ const Scriptread = () => {
                 await sleep(wait);
                 continue;
             }
-            if (!response.ok) throw new Error(`Inworld error ${response.status}`);
+            if (!response.ok) throw new Error(`Inworld error ${response.status} (voice: ${voiceId || "Abby"})`);
             const data = await response.json();
             return await audioContext.current.decodeAudioData(new Uint8Array(atob(data.audioContent).split("").map(c => c.charCodeAt(0))).buffer);
         }
@@ -387,19 +387,36 @@ const Scriptread = () => {
             // Raise WORKERS to go faster, lower it if you see lots of 429s.
             const WORKERS = 4;
             let next = 0, done = 0;
+            const badVoices = new Set();
             const worker = async () => {
                 while (next < segments.length) {
                     const i = next++;
                     const seg = segments[i];
                     const v = seg.type === 'narrator' ? voiceMap.Narrator : (voiceMap[seg.character] || "Abby");
                     // Reuse lines already loaded during playback
-                    buffers[i] = decodedCache.current[i] || await fetchAudio(seg.text, v);
+                    if (decodedCache.current[i]) {
+                        buffers[i] = decodedCache.current[i];
+                    } else {
+                        try {
+                            buffers[i] = await fetchAudio(seg.text, v);
+                        } catch (err) {
+                            // FIX: if one voice is missing (404), don't kill the
+                            // whole export. Read that line with a backup voice
+                            // and list the broken voice in the Console.
+                            console.warn(`Line ${i + 1} failed with voice "${v}". Using backup voice.`, err);
+                            badVoices.add(v);
+                            buffers[i] = await fetchAudio(seg.text, seg.type === 'narrator' ? "Serena" : "Abby");
+                        }
+                    }
                     decodedCache.current[i] = buffers[i];
                     done++;
                     setExportProgress(Math.round((done / segments.length) * 100));
                 }
             };
             await Promise.all(Array.from({ length: WORKERS }, worker));
+            if (badVoices.size) {
+                alert("Done, but these voices failed and were swapped for a backup voice:\n" + [...badVoices].join("\n"));
+            }
             const totalLength = buffers.reduce((acc, b) => acc + b.length, 0);
             const masterBuffer = audioContext.current.createBuffer(1, totalLength, 24000);
             const channelData = masterBuffer.getChannelData(0);
